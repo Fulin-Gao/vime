@@ -57,7 +57,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1"/>
   <meta name="docsearch:language" content="zh"/>
   <meta name="docsearch:version" content="0.0.1" />
-    <meta name="docbuild:last-update" content="2026 年 06 月 23 日"/>
+    <meta name="docbuild:last-update" content="2026 年 06 月 25 日"/>
   </head>
   
   
@@ -665,7 +665,7 @@ launch_train_for_profiling<span class="o">()</span><span class="w"> </span><span
 
 <span class="w">  </span><span class="c1"># 清理旧 Ray / vLLM 进程（按需注释）</span>
 <span class="w">  </span>ray<span class="w"> </span>stop<span class="w"> </span>--force<span class="w"> </span><span class="o">||</span><span class="w"> </span><span class="nb">true</span>
-<span class="w">  </span>pkill<span class="w"> </span>-9<span class="w"> </span>-f<span class="w"> </span><span class="s1">&#39;[v]llm serve|VLL[M]::&#39;</span><span class="w"> </span><span class="o">||</span><span class="w"> </span><span class="nb">true</span>
+<span class="w">  </span>pkill<span class="w"> </span>-9<span class="w"> </span>vllm<span class="w"> </span><span class="o">||</span><span class="w"> </span><span class="nb">true</span>
 <span class="w">  </span>sleep<span class="w"> </span><span class="m">2</span>
 
 <span class="w">  </span>ray<span class="w"> </span>start<span class="w"> </span>--head<span class="w"> </span>--node-ip-address<span class="w"> </span><span class="m">127</span>.0.0.1<span class="w"> </span>--num-gpus<span class="w"> </span><span class="m">2</span><span class="w"> </span>--disable-usage-stats
@@ -879,7 +879,7 @@ bash<span class="w"> </span>/root/vime/run_profiling_demo.sh<span class="w"> </s
   
   <div class="footer-item">
     <p class="last-updated">
-  最后更新于 2026 年 06 月 23 日.
+  最后更新于 2026 年 06 月 25 日.
   <br/>
 </p>
   </div>
