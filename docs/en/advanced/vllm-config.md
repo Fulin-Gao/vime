@@ -257,7 +257,7 @@ Overrides take **highest priority**, overriding both the base `--vllm-*` CLI arg
 
 ### 7. Standalone vLLM Launcher
 
-While `--vllm-config` is designed for vime's training pipeline, it also works as a powerful launcher for pure inference scenarios using the `--rollout-external` pattern or by configuring vime to focus solely on serving.
+While `--vllm-config` is designed for vime's training pipeline, it also works as a powerful launcher for pure inference scenarios using external engine addresses or by configuring vime to focus solely on serving.
 
 **Using external engines with a pre-launched topology:**
 
@@ -270,12 +270,19 @@ vllm serve /path/to/model --port 10091 ...
 
 # Step 2: Connect vime to external engines
 python train.py \
-  --rollout-external \
   --rollout-external-engine-addrs host1:10090 host2:10091 \
   ...
 ```
 
-> **Note:** `--vllm-config` and `--rollout-external` are mutually exclusive. Use `--vllm-config` when you want vime to manage the full engine lifecycle; use `--rollout-external` when engines are pre-deployed.
+vime queries each external engine's `/server_info` endpoint to infer
+`rollout_num_gpus`, per-engine GPU counts, vLLM parallel sizes, and
+prefill/decode worker types. If no `--vllm-router-ip/--vllm-router-port`
+is provided, vime launches its own router and registers the external engines
+to it.
+
+> **Note:** `--vllm-config` and `--rollout-external-engine-addrs` are mutually exclusive. Use `--vllm-config` when you want vime to manage the full engine lifecycle; use `--rollout-external-engine-addrs` when engines are pre-deployed.
+
+For external-engine selection, update from disk, and delta disk transport, see [External Rollout Engines Roadmap](external-rollout-engines.md).
 
 ---
 
@@ -332,7 +339,7 @@ When the config is loaded, vime applies the following resolution cascade:
 | Flag | Conflict Reason |
 |------|----------------|
 | `--prefill-num-servers` | PD disaggregation is configured via `server_groups` in the YAML |
-| `--rollout-external` | External engines have their own topology; config manages the lifecycle internally |
+| `--rollout-external-engine-addrs` | External engines have their own topology; config manages the lifecycle internally |
 
 ---
 
@@ -446,7 +453,13 @@ Use `get_model_url(args, "model_name", "/endpoint")` from `vime.rollout.vllm_rol
 
 ### Q: Can I use `--vllm-config` without training (inference only)?
 
+<<<<<<< ours (vime current)
 While `--vllm-config` is designed for vime's training loop, you can effectively use it for inference-only scenarios by configuring a rollout-only run. For fully standalone vLLM serving, consider using vLLM's native `vllm serve` directly or the `--rollout-external` mode for connecting to pre-deployed engines.
+||||||| base (slime@#2013 translated)
+While `--vllm-config` is designed for vime's training loop, you can effectively use it for inference-only scenarios by configuring a rollout-only run. For fully standalone vLLM serving, consider using vLLM's native `launch_server` directly or the `--rollout-external` mode for connecting to pre-deployed engines.
+=======
+While `--vllm-config` is designed for vime's training loop, you can effectively use it for inference-only scenarios by configuring a rollout-only run. For fully standalone vLLM serving, consider using vLLM's native `launch_server` directly or `--rollout-external-engine-addrs` for connecting to pre-deployed engines.
+>>>>>>> theirs (slime@#2125 translated)
 
 ### Q: What is the relationship between `--vllm-config` and `--prefill-num-servers`?
 

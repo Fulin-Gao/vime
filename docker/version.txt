@@ -1,1 +1,7 @@
+<<<<<<< ours (vime current)
 nightly-dev-20260519a
+||||||| base (slime@#2013 translated)
+nightly-dev-20260530a
+=======
+nightly-dev-20260618a
+>>>>>>> theirs (slime@#2125 translated)

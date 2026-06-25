@@ -40,6 +40,7 @@ def execute():
         "--n-samples-per-prompt 4 "
         "--rollout-max-response-len 8192 "
         "--rollout-temperature 1 "
+        "--rollout-data-transport nixl "
         "--global-batch-size 16 "
         "--balance-data "
     )
@@ -92,9 +93,21 @@ def execute():
 
     vllm_args = (
         "--rollout-num-gpus-per-engine 8 "
+<<<<<<< ours (vime current)
         "--vllm-gpu-memory-utilization 0.8 "
         "--vllm-max-num-seqs 512 "
         "--vllm-max-cudagraph-capture-size 16 "
+||||||| base (slime@#2013 translated)
+        "--vllm-mem-fraction-static 0.8 "
+        "--vllm-cuda-graph-max-bs 16 "
+        "--vllm-max-running-requests 512 "
+        "--vllm-enable-metrics "
+=======
+        "--vllm-mem-fraction-static 0.8 "
+        "--vllm-cuda-graph-max-bs 32 "
+        "--vllm-max-running-requests 512 "
+        "--vllm-enable-metrics "
+>>>>>>> theirs (slime@#2125 translated)
     )
 
     if USE_DEEPEP:

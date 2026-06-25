@@ -13,6 +13,7 @@ import cloudpickle
 import requests
 from vllm.utils.system_utils import kill_process_tree
 
+from vime.backends.vllm_utils.external import get_server_info
 from vime.ray.ray_actor import RayActor
 from vime.utils.http_utils import get_host_info
 
@@ -192,6 +193,7 @@ class VLLMEngine(RayActor):
                     actual_value == expect_value
                 ), f"{name=} {expect_value=} {actual_value=} {expect_server_args=} {actual_server_args=}"
 
+<<<<<<< ours (vime current)
         _wait_server_healthy(
             f"http://{self.server_host}:{self.server_port}",
             is_process_alive=lambda: True,
@@ -203,16 +205,38 @@ class VLLMEngine(RayActor):
         )
         body = response.json()
         actual_server_args = body.get("vllm_config", {}).get("parallel_config", {})
+||||||| base (slime@#2013 translated)
+        _wait_server_healthy(
+            base_url=f"http://{self.server_host}:{self.server_port}",
+            api_key=None,
+            is_process_alive=lambda: True,
+        )
+        actual_server_args = _get_actual_server_args()
+=======
+        actual_server_args = get_server_info(f"http://{self.server_host}:{self.server_port}")
+>>>>>>> theirs (slime@#2125 translated)
         _sanity_check_server_args(actual_server_args, expect_server_args)
+        self._register_to_router(expect_server_args)
 
     def _init_normal(self, server_args_dict):
+<<<<<<< ours (vime current)
         logger.info(f"Launch vLLM api_server at: {self.server_host}:{self.server_port}")
         self.process = launch_server_process(server_args_dict)
+||||||| base (slime@#2013 translated)
+        logger.info(f"Launch HttpServerEngineAdapter at: {self.server_host}:{self.server_port}")
+        self.process = launch_server_process(ServerArgs(**server_args_dict))
+=======
+        logger.info(f"Launch HttpServerEngineAdapter at: {self.server_host}:{self.server_port}")
+        self.process = launch_server_process(ServerArgs(**server_args_dict))
+        self._register_to_router(server_args_dict)
+>>>>>>> theirs (slime@#2125 translated)
 
+    def _register_to_router(self, server_args_dict):
         if self.worker_type == "encoder":
             return
 
         if self.node_rank == 0 and self.router_ip and self.router_port:
+<<<<<<< ours (vime current)
             payload = {
                 "url": f"http://{self.server_host}:{self.server_port}",
                 "worker_type": self.worker_type,
@@ -221,6 +245,48 @@ class VLLMEngine(RayActor):
                 f"http://{self.router_ip}:{self.router_port}/workers",
                 json=payload,
             )
+||||||| base (slime@#2013 translated)
+            if parse(vllm_router.__version__) <= parse("0.2.1"):
+                assert self.worker_type == "regular", "pd disaggregation is not supported in old router."
+                response = requests.post(
+                    f"http://{self.router_ip}:{self.router_port}/add_worker?url=http://{self.server_host}:{self.server_port}",
+                )
+            else:
+                payload = {
+                    "url": f"http://{self.server_host}:{self.server_port}",
+                    "worker_type": self.worker_type,
+                }
+                if self.worker_type == "prefill":
+                    payload["bootstrap_port"] = server_args_dict["disaggregation_bootstrap_port"]
+                response = requests.post(
+                    f"http://{self.router_ip}:{self.router_port}/workers",
+                    json=payload,
+                )
+=======
+            worker_url = f"http://{self.server_host}:{self.server_port}"
+            if parse(vllm_router.__version__) <= parse("0.2.1"):
+                assert self.worker_type == "regular", "pd disaggregation is not supported in old router."
+                response = requests.post(
+                    f"http://{self.router_ip}:{self.router_port}/add_worker?url={worker_url}",
+                )
+            else:
+                payload = {
+                    "url": worker_url,
+                    "worker_type": self.worker_type,
+                }
+                if self.worker_type == "prefill":
+                    bootstrap_port = server_args_dict.get("disaggregation_bootstrap_port")
+                    if bootstrap_port is None:
+                        raise RuntimeError(
+                            f"Prefill worker {worker_url} does not have disaggregation_bootstrap_port; "
+                            "cannot register it to the PD router."
+                        )
+                    payload["bootstrap_port"] = bootstrap_port
+                response = requests.post(
+                    f"http://{self.router_ip}:{self.router_port}/workers",
+                    json=payload,
+                )
+>>>>>>> theirs (slime@#2125 translated)
             response.raise_for_status()
 
     def _make_request(self, endpoint: str, payload: dict | None = None):
@@ -533,10 +599,44 @@ def _compute_server_args(
         "port": port,
         "nnodes": nnodes,
         "node_rank": node_rank,
+<<<<<<< ours (vime current)
         "tensor_parallel_size": tp,
         "logprobs_mode": "processed_logprobs",
         "enable_prompt_tokens_details": True,
         "enable_server_load_tracking": True,
+||||||| base (slime@#2013 translated)
+        "dist_init_addr": dist_init_addr,
+        "gpu_id_step": 1,
+        "base_gpu_id": base,
+        # parallel
+        "tp_size": _gpus_per_engine // args.vllm_pp_size,
+        "dp_size": args.vllm_dp_size,
+        "pp_size": args.vllm_pp_size,
+        "ep_size": args.vllm_ep_size,
+        # always skip warmup to prevent warmup timeout.
+        "skip_server_warmup": True,
+        # always enable draft weights cpu backup so that we run training without mtp weights.
+        "enable_draft_weights_cpu_backup": True,
+        # Always enable Prometheus metrics so the /engine_metrics endpoint is
+        # available for W&B scraping (regardless of --vllm-enable-metrics).
+        "enable_metrics": True,
+=======
+        "dist_init_addr": dist_init_addr,
+        "gpu_id_step": 1,
+        "base_gpu_id": base,
+        # parallel
+        "tp_size": _gpus_per_engine // args.vllm_pp_size,
+        "dp_size": args.vllm_dp_size,
+        "pp_size": args.vllm_pp_size,
+        "ep_size": args.vllm_ep_size,
+        # always skip warmup to prevent warmup timeout.
+        "skip_server_warmup": True,
+        # always enable draft weights cpu backup so that we run training without mtp weights.
+        "enable_draft_weights_cpu_backup": True,
+        # Always enable Prometheus metrics so the router /engine_metrics endpoint
+        # is available for external scraping.
+        "enable_metrics": True,
+>>>>>>> theirs (slime@#2125 translated)
     }
 
     if pp > 1:
@@ -643,6 +743,7 @@ _VLLM_SERVER_FIELDS: frozenset[str] | None = None
 _EXTERNAL_ENGINE_SKIP_CHECK_FIELDS = [
     "model",
     "trust_remote_code",
+<<<<<<< ours (vime current)
     "seed",
     "host",
     "port",
@@ -650,4 +751,31 @@ _EXTERNAL_ENGINE_SKIP_CHECK_FIELDS = [
     "logprobs_mode",
     "enable_prompt_tokens_details",
     "enable_server_load_tracking",
+||||||| base (slime@#2013 translated)
+    "random_seed",
+    "nccl_port",
+    "dist_init_addr",
+    "skip_server_warmup",
+    "enable_draft_weights_cpu_backup",
+    "enable_metrics",
+    "mem_fraction_static",
+=======
+    "random_seed",
+    "host",
+    "port",
+    "nccl_port",
+    "nnodes",
+    "node_rank",
+    "dist_init_addr",
+    "gpu_id_step",
+    "base_gpu_id",
+    "tp_size",
+    "dp_size",
+    "pp_size",
+    "ep_size",
+    "skip_server_warmup",
+    "enable_draft_weights_cpu_backup",
+    "enable_metrics",
+    "mem_fraction_static",
+>>>>>>> theirs (slime@#2125 translated)
 ]
