@@ -11,16 +11,8 @@ per-sample reward via ``--custom-rm-path`` — the worker calls vime's stock
 :func:`generate_and_rm_group` which dispatches to those.
 
 Concurrency is sourced from ``args.vllm_server_concurrency`` and scaled by
-<<<<<<< ours (vime current)
 the number of vLLM engines (``rollout_num_gpus // rollout_num_gpus_per_engine``)
 to match the per-sample semaphore cap in :mod:`vime.rollout.vllm_rollout`.
-||||||| base (slime@#2013 translated)
-the number of vllm engines (``rollout_num_gpus // rollout_num_gpus_per_engine``)
-to match the per-sample semaphore cap in :mod:`vime.rollout.vllm_rollout`.
-=======
-the number of vllm engines to match the per-sample semaphore cap in
-:mod:`vime.rollout.vllm_rollout`.
->>>>>>> theirs (slime@#2125 translated)
 
 The worker is intentionally oblivious to vime's higher-level pause /
 weight-update signalling (e.g. ``GenerateState.aborted``). Each in-flight

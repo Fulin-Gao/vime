@@ -2,17 +2,8 @@
 
 [中文版](./README_zh.md) · [Repository](https://github.com/vllm-project/vime)
 
-<<<<<<< ours (vime current)
 [![Documentation](https://img.shields.io/badge/docs-latest-brightgreen.svg?style=flat)](https://docs.vllm.ai/projects/vime/en/latest/)
 [![Ask DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/vllm-project/vime)
-||||||| base (slime@#2013 translated)
-[![Documentation](https://img.shields.io/badge/docs-latest-brightgreen.svg?style=flat)](https://thudm.github.io/vime/)
-[![Ask DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/THUDM/vime)
-=======
-[![Documentation](https://img.shields.io/badge/docs-latest-brightgreen.svg?style=flat)](https://thudm.github.io/vime/)
-[![CI](https://img.shields.io/github/actions/workflow/status/THUDM/vime/pr-test.yml?branch=zilin%2Fci-dont-merge&event=pull_request&label=CI&logo=github)](https://github.com/THUDM/vime/pull/2053/checks)
-[![Ask DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/THUDM/vime)
->>>>>>> theirs (slime@#2125 translated)
 
 **Vime** is an LLM post-training framework for RL scaling, built on [slime](https://github.com/THUDM/slime). It keeps slime's training stack and data-generation design while using [**vLLM**](https://github.com/vllm-project/vllm) (with [vllm-router](https://github.com/vllm-project/router)) as the default rollout backend. Vime provides two core capabilities:
 
@@ -21,89 +12,11 @@
 
 Vime inherits broad model support from slime, including:
 
-<<<<<<< ours (vime current)
 - Qwen series (Qwen3.6, Qwen3.5, Qwen3Next, Qwen3MoE, Qwen3, Qwen2.5);
 - DeepSeek V3 series (DeepSeek V3, V3.1, DeepSeek R1);
-||||||| base (slime@#2013 translated)
-This makes vime one of the most battle-tested open RL post-training frameworks: small enough to understand and extend, but validated through complete training loops behind SOTA-level model releases.
-
-## Why This Design Matters
-
-- **Battle-tested by frontier model training**: vime is the RL framework behind [GLM-5.1](https://z.ai/blog/glm-5.1), [GLM-5](https://z.ai/blog/glm-5), [GLM-4.7](https://z.ai/blog/glm-4.7), [GLM-4.6](https://z.ai/blog/glm-4.6), and [GLM-4.5](https://z.ai/blog/glm-4.5). This validates the full post-training loop, not only isolated examples.
-- **Correctness-first infrastructure**: RL bugs are often silent. vime keeps the dataflow explicit, supports separate rollout-only and train-only debugging paths, and documents reproducibility, fault tolerance, tracing, profiling, and CI as first-class engineering concerns.
-- **Native by design**: vime passes Megatron arguments through directly and exposes installed vLLM arguments with a `--vllm-` prefix. New upstream training and serving optimizations can be used without adding another abstraction layer inside vime.
-- **Maximum data-generation freedom**: math, code, search, tools, sandboxes, verifiers, environments, multi-agent systems, and long-horizon agentic workflows plug in as data generation or reward workflows. They do not fork the training kernel.
-- **Lightweight and opinionated**: vime focuses deeply on the Megatron + vLLM path used for large-scale RL. By choosing one rollout backend, vime can use vLLM-specific capabilities directly instead of flattening multiple inference engines into a lowest-common-denominator abstraction.
-
-## Production Validation
-
-vime has been exercised by the complete workflow needed for release-grade model post-training: large-scale training, high-throughput rollout, weight synchronization, reward/verifier data, checkpointing, debugging, and long-running stability.
-
-Beyond the GLM family, vime also supports:
-
-- Qwen series: Qwen3.6, Qwen3.5, Qwen3Next, Qwen3MoE, Qwen3, Qwen2.5;
-- DeepSeek V3 series: DeepSeek V3, V3.1, DeepSeek R1;
-=======
-This makes vime one of the most battle-tested open RL post-training frameworks: small enough to understand and extend, but validated through complete training loops behind SOTA-level model releases.
-
-## Why This Design Matters
-
-- **Battle-tested by frontier model training**: vime is the RL framework behind [GLM-5.2](https://z.ai/blog/glm-5.2), [GLM-5.1](https://z.ai/blog/glm-5.1), [GLM-5](https://z.ai/blog/glm-5), [GLM-4.7](https://z.ai/blog/glm-4.7), [GLM-4.6](https://z.ai/blog/glm-4.6), and [GLM-4.5](https://z.ai/blog/glm-4.5). This validates the full post-training loop, not only isolated examples.
-- **Correctness-first infrastructure**: RL bugs are often silent. vime keeps the dataflow explicit, supports separate rollout-only and train-only debugging paths, and documents reproducibility, fault tolerance, tracing, profiling, and CI as first-class engineering concerns.
-- **Native by design**: vime passes Megatron arguments through directly and exposes installed vLLM arguments with a `--vllm-` prefix. New upstream training and serving optimizations can be used without adding another abstraction layer inside vime.
-- **Maximum data-generation freedom**: math, code, search, tools, sandboxes, verifiers, environments, multi-agent systems, and long-horizon agentic workflows plug in as data generation or reward workflows. They do not fork the training kernel.
-- **Lightweight and opinionated**: vime focuses deeply on the Megatron + vLLM path used for large-scale RL. By choosing one rollout backend, vime can use vLLM-specific capabilities directly instead of flattening multiple inference engines into a lowest-common-denominator abstraction.
-
-## Production Validation
-
-vime has been exercised by the complete workflow needed for release-grade model post-training: large-scale training, high-throughput rollout, weight synchronization, reward/verifier data, checkpointing, debugging, and long-running stability.
-
-Beyond the GLM family, vime also supports:
-
-- Qwen series: Qwen3.6, Qwen3.5, Qwen3Next, Qwen3MoE, Qwen3, Qwen2.5;
-- DeepSeek V3 series: DeepSeek V3, V3.1, DeepSeek R1;
->>>>>>> theirs (slime@#2125 translated)
 - Llama 3.
 
-<<<<<<< ours (vime current)
 Discussion channels:
-||||||| base (slime@#2013 translated)
-## Native Engine Pass-Through and vLLM Deployment
-
-vime is not just a framework that can call an inference backend. It keeps the Megatron and vLLM control surfaces close to the upstream engines while adding the RL dataflow around them:
-
-- native vLLM argument pass-through: every argument supported by the installed vLLM can be used by adding the `--vllm-` prefix, such as passing `--mem-fraction-static` as `--vllm-mem-fraction-static`;
-- native Megatron argument pass-through: vime reads Megatron arguments directly, so Megatron-side parallelism, optimizer, checkpointing, and model options remain available without wrapper code;
-- [vLLM Config](docs/en/advanced/vllm-config.md) as an optional YAML extension for topology-specific control, such as separate prefill/decode/EPD-style settings, heterogeneous server groups, multi-model serving, and per-group vLLM overrides;
-- [PD Disaggregation](docs/en/advanced/pd-disaggregation.md) for multi-turn and agentic workloads with different prefill/decode resource needs;
-- router policies such as session affinity for multi-turn agents;
-- [Delta Weight Sync](docs/en/advanced/delta-weight-sync.md) for training/inference disaggregation and large-model update efficiency;
-- external rollout engines for deployments where serving is managed outside the training job.
-
-This pass-through design makes vime native from the start. Most upstream engine improvements remain accessible as the engines evolve, while vime focuses on the RL loop, dataflow, synchronization, and correctness checks.
-
-Choosing vLLM as the single rollout backend is also intentional. Multi-backend frameworks often have to abstract over the common subset of several inference engines, which can hide the strongest features of each backend. vime instead optimizes deeply for vLLM so RL workloads can use vLLM-specific serving, routing, caching, disaggregation, and weight-sync behavior directly.
-
-## Correctness, Stability, and CI
-=======
-## Native Engine Pass-Through and vLLM Deployment
-
-vime is not just a framework that can call an inference backend. It keeps the Megatron and vLLM control surfaces close to the upstream engines while adding the RL dataflow around them:
-
-- native vLLM argument pass-through: every argument supported by the installed vLLM can be used by adding the `--vllm-` prefix, such as passing `--mem-fraction-static` as `--vllm-mem-fraction-static`;
-- native Megatron argument pass-through: vime reads Megatron arguments directly, so Megatron-side parallelism, optimizer, checkpointing, and model options remain available without wrapper code;
-- [vLLM Config](docs/en/advanced/vllm-config.md) as an optional YAML extension for topology-specific control, such as separate prefill/decode/EPD-style settings, heterogeneous server groups, multi-model serving, and per-group vLLM overrides;
-- [PD Disaggregation](docs/en/advanced/pd-disaggregation.md) for multi-turn and agentic workloads with different prefill/decode resource needs;
-- router policies such as session affinity for multi-turn agents;
-- [Delta Weight Sync](docs/en/advanced/delta-weight-sync.md) for training/inference disaggregation and large-model update efficiency;
-- [External Rollout Engines](docs/en/advanced/external-rollout-engines.md) for deployments where serving is managed outside the training job. The vLLM serving side can use an independent environment, and with disk transport can even run on different GPU models or vendors while using full-checkpoint update from disk or delta update over a shared filesystem.
-
-This pass-through design makes vime native from the start. Most upstream engine improvements remain accessible as the engines evolve, while vime focuses on the RL loop, dataflow, synchronization, and correctness checks.
-
-Choosing vLLM as the single rollout backend is also intentional. Multi-backend frameworks often have to abstract over the common subset of several inference engines, which can hide the strongest features of each backend. vime instead optimizes deeply for vLLM so RL workloads can use vLLM-specific serving, routing, caching, disaggregation, and weight-sync behavior directly.
-
-## Correctness, Stability, and CI
->>>>>>> theirs (slime@#2125 translated)
 
 - [slack](https://vllm-dev.slack.com/archives/C0B8W5QFL22/p1780899164831779)
 - [wechat group](./imgs/wechat_group.png)
@@ -144,116 +57,6 @@ For a comprehensive quick start guide covering environment setup, data preparati
 
 We also provide examples for some use cases not covered in the quick start guide; please check [examples](examples/).
 
-<<<<<<< ours (vime current)
-||||||| base (slime@#2013 translated)
-### Agentic RL examples
-
-For agentic RL workloads, the following examples plug into the standard rollout / Data Buffer loop through customization interfaces — they are not separate frameworks:
-
-- [`examples/multi_agent`](examples/multi_agent/README.md): Multi-agent rollout via a custom `--rollout-function-path`.
-- [`examples/search-r1`](examples/search-r1/): Search/RAG-style multi-turn generation via `--custom-generate-function-path`.
-- [`examples/fully_async`](examples/fully_async/README.md): Fully-async rollout, useful for long-tail agentic generation where some samples take much longer than others.
-- [`examples/coding_agent_rl`](examples/coding_agent_rl/README.md): End-to-end SWE coding-agent RL with sandboxed tool use, test-based rewards, and token-correct trajectory segments via `--custom-generate-function-path`.
-
-See the [Customization Guide](docs/en/get_started/customization.md) for which interface to use for a given agentic workflow.
-
-## Ecosystem Built on vime
-
-These are not just demos. They are independent systems that use vime as a reusable RL substrate for production-scale post-training, agentic RL, domain RL, and rollout-system research.
-
-### 🌈 Relax: Asynchronous RL Engine for Omni-Modal Agentic Training
-
-[**Relax**](https://github.com/redai-infra/Relax) (Reinforcement Engine Leveraging Agentic X-modality) is an omni-modal agentic RL framework open-sourced by the RedAI Infra team, built upon the vime infrastructure stack that combines Ray, Megatron-LM, and vLLM. Relax adopts a service-oriented architecture on Ray Serve with Megatron-LM and vLLM as training/inference backends. It uses [TransferQueue](https://github.com/Ascend/TransferQueue) to fully decouple Actor, Rollout, ActorFwd, Reference, and Advantage computation onto independent GPU clusters, and introduces **DCS (Distributed Checkpoint Service)** — an NCCL-broadcast weight-sync engine that streams updated Actor weights to Rollout/ActorFwd/Reference asynchronously and overlaps the transfer with the next training step, enabling fully-async training at configurable staleness. Relax supports end-to-end RL for text, vision, and audio (including Qwen3-Omni) and agentic multi-turn rollouts.
-
-### 🦞 OpenClaw-RL: Train a Personalized Clawbot Simply by Talking to It
-
-[**OpenClaw-RL**](https://github.com/Gen-Verse/OpenClaw-RL) is an RL server for personalized OpenClaw agents. It hosts the OpenClaw model and improves it from prior conversations across deployments, while vime's asynchronous RL infrastructure prevents training from interfering with API serving. It supports two automatic optimization methods: GRPO with binary feedback inferred from subsequent states, and on-policy distillation that extracts hindsight hints from later feedback for the current policy.
-
-### ⚛️ P1: Mastering Physics Olympiads with Reinforcement Learning
-
-[**P1**](https://prime-rl.github.io/P1/) is a family of open-source physics reasoning models trained entirely through reinforcement learning. P1 leverages vime as the RL post-training framework, and introduces a multi-stage RL training algorithm that progressively enhances reasoning ability through adaptive learnability adjustment and stabilization mechanisms. Empowered by this training paradigm, P1 delivers breakthrough performance in open-source physics reasoning.
-
-### 📈RLVE: Scaling LM RL with Adaptive Verifiable Environments
-
-[**RLVE**](https://github.com/Zhiyuan-Zeng/RLVE) introduces an approach using verifiable environments that procedurally generate problems and provide algorithmically verifiable rewards, to scale up RL for language models (LMs). With joint training across 400 verifiable environments, RLVE enables each environment to dynamically adapt its problem difficulty distribution to the policy model's capabilities as training progresses.
-
-### ⚡ TritonForge: Agentic RL Training Framework for Kernel Generation
-
-[**TritonForge**](https://github.com/RLsys-Foundation/TritonForge) leverages vime's SFT and RL capabilities to train LLMs that automatically generate optimized GPU kernels. By using a two-stage training approach—supervised fine-tuning followed by reinforcement learning with multi-turn compilation feedback—TritonForge achieves remarkable results in converting PyTorch operations into high-performance Triton kernels.
-
-### 🚀 APRIL: Accelerating RL Training with Active Partial Rollouts
-
-[**APRIL**](https://github.com/RLsys-Foundation/APRIL) introduces a system-level optimization that seamlessly integrates with vime to accelerate the rollout generation phase in RL training. By intelligently over-provisioning requests and actively managing partial completions, APRIL addresses the long-tail generation bottleneck that typically consumes over 90% of RL training time.
-
-### 🏟️ qqr: Scaling Open-Ended Agents with ArenaRL & MCP
-
-[**qqr**](https://github.com/Alibaba-NLP/qqr) (a.k.a. hilichurl) is a lightweight extension for vime designed to evolve open-ended agents. It implements the **ArenaRL** algorithm to tackle discriminative collapse through tournament-based relative ranking (**e.g., Seeded Single-Elimination, Round-Robin**) and seamlessly integrates the **Model Context Protocol (MCP)**. qqr leverages vime's high-throughput training capabilities to enable scalable, distributed evolution of agents in standardized, decoupled tool environments.
-
-Together, these projects show the main idea behind vime: one high-performance RL kernel can support frontier model post-training, online agent optimization, verifiable environments, omni-modal rollouts, kernel-generation agents, and rollout-system research without changing the core training loop.
-
-=======
-### Agentic RL examples
-
-For agentic RL workloads, the following examples plug into the standard rollout / Data Buffer loop through customization interfaces — they are not separate frameworks:
-
-- [`examples/multi_agent`](examples/multi_agent/README.md): Multi-agent rollout via a custom `--rollout-function-path`.
-- [`examples/search-r1`](examples/search-r1/): Search/RAG-style multi-turn generation via `--custom-generate-function-path`.
-- [`examples/fully_async`](examples/fully_async/README.md): Fully-async rollout, useful for long-tail agentic generation where some samples take much longer than others.
-- [`examples/coding_agent_rl`](examples/coding_agent_rl/README.md): End-to-end SWE coding-agent RL with sandboxed tool use, test-based rewards, and token-correct trajectory segments via `--custom-generate-function-path`.
-
-See the [Customization Guide](docs/en/get_started/customization.md) for which interface to use for a given agentic workflow.
-
-## Ecosystem Built on vime
-
-These are not just demos. They are independent systems that use vime as a reusable RL substrate for production-scale post-training, agentic RL, domain RL, and rollout-system research.
-
-### 🐎 Dressage: Scalable RL for Any Agent and Sandbox
-
-[**Dressage**](https://github.com/Accio-Lab/Dressage) is an agentic RL training framework built on vime by [Alibaba Accio](https://www.accio.com/work?im_ref=1O8wgT3poxyZWCj31F1ZJ0fNUkuTK6x9ZTHw0Y0&sharedid=&im_pid=5619512&im_pname=AI%20INTRO%20COPORATE), centered on unified RL for blackbox agents (e.g., [OpenCode](https://github.com/anomalyco/opencode), [OpenClaw](https://github.com/openclaw/openclaw)) and white loops across any sandbox environment (e.g., [bwrap](https://github.com/containers/bubblewrap), [E2B](https://github.com/e2b-dev/e2b), Kubernetes). It decouples interaction semantics, execution placement, and token-level trajectory capture through Paddock, Sandbox, and Proxy layers, adapting agent workflows without rewriting their internal loops. Dressage records token-wise logprobs, loss masks, weight versions, and MoE routing, then uses TITO and segment-aware training to turn long-horizon tool interactions into stable RL samples.
-
-### ⛵ Miles: Enterprise-Grade Reinforcement Learning for Large-Scale Model Training
-
-[Miles](https://github.com/radixark/miles) is an RL post-training framework for large-scale models, built on vime by [RadixArk](https://github.com/radixark). It stays closely aligned with vime's upstream development while extending it with enterprise-oriented features: deeper [vLLM](https://github.com/sgl-project/vllm) integration, operational tooling, deployment support, and optimizations for new [models](https://www.radixark.com/miles/docs/models) and [hardware](https://www.radixark.com/miles/docs/platforms). Miles also adds a growing set of production features, including LoRA, TITO, and low-precision training.
-
-### 🔷 vime: vLLM-Native RL Post-Training Built on vime
-
-[**vime**](https://github.com/vllm-project/vime) is a post-training framework built on vime and maintained by the vLLM project. It keeps vime's Megatron training stack, Data Buffer dataflow, and custom data-generation design, with its main change being a rollout backend swapped to [**vLLM**](https://github.com/vllm-project/vllm) with [vllm-router](https://github.com/vllm-project/router). Starting from an existing vime launch script, adjusting only rollout-related parameters is enough to quickly run training with vime.
-
-### 🌈 Relax: Asynchronous RL Engine for Omni-Modal Agentic Training
-
-[**Relax**](https://github.com/redai-infra/Relax) (Reinforcement Engine Leveraging Agentic X-modality) is an omni-modal agentic RL framework open-sourced by the RedAI Infra team, built upon the vime infrastructure stack that combines Ray, Megatron-LM, and vLLM. Relax adopts a service-oriented architecture on Ray Serve with Megatron-LM and vLLM as training/inference backends. It uses [TransferQueue](https://github.com/Ascend/TransferQueue) to fully decouple Actor, Rollout, ActorFwd, Reference, and Advantage computation onto independent GPU clusters, and introduces **DCS (Distributed Checkpoint Service)** — an NCCL-broadcast weight-sync engine that streams updated Actor weights to Rollout/ActorFwd/Reference asynchronously and overlaps the transfer with the next training step, enabling fully-async training at configurable staleness. Relax supports end-to-end RL for text, vision, and audio (including Qwen3-Omni) and agentic multi-turn rollouts.
-
-### 🦞 OpenClaw-RL: Train a Personalized Clawbot Simply by Talking to It
-
-[**OpenClaw-RL**](https://github.com/Gen-Verse/OpenClaw-RL) is an RL server for personalized OpenClaw agents. It hosts the OpenClaw model and improves it from prior conversations across deployments, while vime's asynchronous RL infrastructure prevents training from interfering with API serving. It supports two automatic optimization methods: GRPO with binary feedback inferred from subsequent states, and on-policy distillation that extracts hindsight hints from later feedback for the current policy.
-
-### ⚛️ P1: Mastering Physics Olympiads with Reinforcement Learning
-
-[**P1**](https://prime-rl.github.io/P1/) is a family of open-source physics reasoning models trained entirely through reinforcement learning. P1 leverages vime as the RL post-training framework, and introduces a multi-stage RL training algorithm that progressively enhances reasoning ability through adaptive learnability adjustment and stabilization mechanisms. Empowered by this training paradigm, P1 delivers breakthrough performance in open-source physics reasoning.
-
-### 📈RLVE: Scaling LM RL with Adaptive Verifiable Environments
-
-[**RLVE**](https://github.com/Zhiyuan-Zeng/RLVE) introduces an approach using verifiable environments that procedurally generate problems and provide algorithmically verifiable rewards, to scale up RL for language models (LMs). With joint training across 400 verifiable environments, RLVE enables each environment to dynamically adapt its problem difficulty distribution to the policy model's capabilities as training progresses.
-
-### ⚡ TritonForge: Agentic RL Training Framework for Kernel Generation
-
-[**TritonForge**](https://github.com/RLsys-Foundation/TritonForge) leverages vime's SFT and RL capabilities to train LLMs that automatically generate optimized GPU kernels. By using a two-stage training approach—supervised fine-tuning followed by reinforcement learning with multi-turn compilation feedback—TritonForge achieves remarkable results in converting PyTorch operations into high-performance Triton kernels.
-
-### 🚀 APRIL: Accelerating RL Training with Active Partial Rollouts
-
-[**APRIL**](https://github.com/RLsys-Foundation/APRIL) introduces a system-level optimization that seamlessly integrates with vime to accelerate the rollout generation phase in RL training. By intelligently over-provisioning requests and actively managing partial completions, APRIL addresses the long-tail generation bottleneck that typically consumes over 90% of RL training time.
-
-### 🏟️ qqr: Scaling Open-Ended Agents with ArenaRL & MCP
-
-[**qqr**](https://github.com/Alibaba-NLP/qqr) (a.k.a. hilichurl) is a lightweight extension for vime designed to evolve open-ended agents. It implements the **ArenaRL** algorithm to tackle discriminative collapse through tournament-based relative ranking (**e.g., Seeded Single-Elimination, Round-Robin**) and seamlessly integrates the **Model Context Protocol (MCP)**. qqr leverages vime's high-throughput training capabilities to enable scalable, distributed evolution of agents in standardized, decoupled tool environments.
-
-### ☁️ ART: Scalable and Sandboxed Agentic RL on AWS Bedrock AgentCore Runtime
-
-[**ART (AgentCore RL Toolkit)**](https://github.com/awslabs/agentcore-rl-toolkit) is an SDK that adapts production agents for RL training on **AWS Bedrock AgentCore Runtime**. AgentCore Runtime provides auto-scaled and sandboxed agent execution environments well-suited for running many parallel agent rollouts securely. Using ART, user only needs to apply a decorator (`@app.rollout_entrypoint`) to their agent codes for RL adaption while the same production agent harness is reused directly, where token capture for RL is handled at model gateway layer. ART uses vime as one option of training backends, enabling users to easily optimizing the production agent model with RL training algorithms in vime.
-
-Together, these projects show the main idea behind vime: one high-performance RL kernel can support frontier model post-training, online agent optimization, verifiable environments, omni-modal rollouts, kernel-generation agents, and rollout-system research without changing the core training loop.
-
->>>>>>> theirs (slime@#2125 translated)
 ## Arguments Walkthrough
 
 Arguments in Vime are divided into three categories:

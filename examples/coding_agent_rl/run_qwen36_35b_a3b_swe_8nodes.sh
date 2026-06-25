@@ -181,18 +181,8 @@ VLLM_ARGS=(
    --vllm-enable-expert-parallel
    --vllm-tool-call-parser qwen3_coder
    --vllm-reasoning-parser qwen3
-<<<<<<< ours (vime current)
    --vllm-speculative-config '{"method":"mtp","num_speculative_tokens":3}'
    --prefill-num-servers 1
-||||||| base (slime@#2013 translated)
-   --vllm-speculative-algorithm EAGLE
-   --vllm-speculative-num-steps 3
-   --vllm-speculative-eagle-topk 1
-   --vllm-speculative-num-draft-tokens 4
-   --vllm-mamba-scheduler-strategy extra_buffer
-   --prefill-num-servers 1
-=======
->>>>>>> theirs (slime@#2125 translated)
 )
 
 MISC_ARGS=(

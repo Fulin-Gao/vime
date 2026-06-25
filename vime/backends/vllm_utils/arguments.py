@@ -1,15 +1,9 @@
 import argparse
 
-<<<<<<< ours (vime current)
 from vllm.engine.arg_utils import AsyncEngineArgs
 from vllm.utils.argparse_utils import FlexibleArgumentParser
-
-||||||| base (slime@#2013 translated)
-from vllm.srt.server_args import ServerArgs
-=======
-from vllm.srt.server_args import ServerArgs
 from vllm_router.launch_router import RouterArgs
->>>>>>> theirs (slime@#2125 translated)
+
 from vime.utils.http_utils import _wrap_ipv6
 
 

@@ -153,13 +153,6 @@ ray job submit --address="http://127.0.0.1:8265" \
         "MASTER_ADDR": "${MASTER_ADDR}",
         "PYTHONPATH": "/root/Megatron-LM/",
         "CUDA_DEVICE_MAX_CONNECTIONS": "1",
-<<<<<<< ours (vime current)
-||||||| base (slime@#2013 translated)
-        "LD_LIBRARY_PATH": "/usr/local/nvidia/lib:/usr/local/nvidia/lib64:/sgl-workspace/nvshmem/install/lib/"
-=======
-        "NVSHMEM_DISABLE_NCCL": "1",
-        "LD_LIBRARY_PATH": "/usr/local/nvidia/lib:/usr/local/nvidia/lib64:/sgl-workspace/nvshmem/install/lib/"
->>>>>>> theirs (slime@#2125 translated)
      }
    }' \
    -- python3 train.py \

@@ -2,33 +2,16 @@
 
 import sys
 import tempfile
-<<<<<<< ours (vime current)
-from pathlib import Path
-||||||| base (slime@#2013 translated)
-=======
 from argparse import Namespace
 from pathlib import Path
->>>>>>> theirs (slime@#2125 translated)
 
 import pytest
 import yaml
 
-<<<<<<< ours (vime current)
-_tests_root = Path(__file__).resolve().parents[1]
-if str(_tests_root) not in sys.path:
-    sys.path.insert(0, str(_tests_root))
-
-import _unit_stubs
-
-_unit_stubs.install_rollout_optional_stubs()
-
-||||||| base (slime@#2013 translated)
-=======
 REPO_ROOT = Path(__file__).resolve().parents[2]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
->>>>>>> theirs (slime@#2125 translated)
 
 def _write_yaml(data: dict) -> str:
     f = tempfile.NamedTemporaryFile(mode="w", suffix=".yaml", delete=False)
@@ -52,14 +35,8 @@ class TestVllmConfigUpdateWeights:
                 ]
             }
         )
-<<<<<<< ours (vime current)
         config = VllmConfig.from_yaml(path)
-||||||| base (slime@#2013 translated)
-        config = vLLMConfig.from_yaml(path)
-=======
-        config = vLLMConfig.from_yaml(path)
         config.models[0].resolve(Namespace(hf_checkpoint="/tmp/hf", rollout_num_gpus_per_engine=1))
->>>>>>> theirs (slime@#2125 translated)
         assert len(config.models) == 1
         assert config.models[0].update_weights is None
 

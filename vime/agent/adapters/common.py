@@ -463,7 +463,7 @@ async def call_vllm_generate(
     adapter: BaseAdapter,
     session_id: str | None = None,
 ) -> TurnRecord:
-    """POST one turn to vllm /generate and pack the reply into a TurnRecord.
+    """POST one turn to vllm ``/inference/v1/generate`` and pack the reply into a TurnRecord.
 
     Module-level (not a method) so tests can monkeypatch it.
     """
@@ -483,8 +483,7 @@ async def call_vllm_generate(
             return TurnRecord(prompt_ids=list(prompt_ids), output_ids=[], finish_reason="length")
         sp["max_new_tokens"] = min(int(sp.get("max_new_tokens", remaining_context)), remaining_context)
 
-<<<<<<< ours (vime current)
-    vllm_url = app[VLLM_URL_KEY]
+    vllm_url = adapter.vllm_url
     payload: dict[str, Any] = {
         "token_ids": list(prompt_ids),
         "sampling_params": _vllm_sampling_body(sp),
@@ -492,15 +491,6 @@ async def call_vllm_generate(
     # session_id routes via vllm-router's consistent_hash policy (x-session-id header);
     # see vime ``vllm_rollout.py`` headers handling.
     headers = {"x-session-id": session_id} if session_id and session_id != "default" else None
-||||||| base (slime@#2013 translated)
-    vllm_url = app[VLLM_URL_KEY]
-    rid = uuid.uuid4().hex
-    headers = {"X-SMG-Routing-Key": session_id} if session_id and session_id != "default" else None
-=======
-    vllm_url = adapter.vllm_url
-    rid = uuid.uuid4().hex
-    headers = {"X-SMG-Routing-Key": session_id} if session_id and session_id != "default" else None
->>>>>>> theirs (slime@#2125 translated)
     timeout = aiohttp.ClientTimeout(total=None, sock_read=900)
     task = asyncio.current_task()
     try:
@@ -512,54 +502,25 @@ async def call_vllm_generate(
             if r.status >= 400:
                 text = await r.text()
                 logger.warning(
-                    "[%s] sid=%s rid=%s vllm upstream %d: %.200s",
+                    "[%s] sid=%s vllm upstream %d: %.200s",
                     adapter.log_prefix,
                     session_id,
-                    rid,
                     r.status,
                     text,
                 )
                 raise RuntimeError(f"vllm upstream {r.status}: {text[:400]}")
             data = await r.json(content_type=None)
-<<<<<<< ours (vime current)
         choice = (data.get("choices") or [{}])[0]
         output_ids, output_log_probs = _tokens_and_logprobs_from_choice(choice)
         fr = choice.get("finish_reason")
         finish = fr if isinstance(fr, str) and fr else "stop"
-    except (asyncio.CancelledError, aiohttp.ClientError, asyncio.TimeoutError):
+    except (asyncio.CancelledError, aiohttp.ClientError, asyncio.TimeoutError) as e:
         # vLLM ``/inference/v1/generate`` has no per-request HTTP abort endpoint.
         # Cancelling the in-flight task tears down the aiohttp request, which drops
         # the streaming connection so vLLM stops generating.
+        logger.debug("[%s] sid=%s turn aborted: %s", adapter.log_prefix, session_id, type(e).__name__)
         if task is not None:
             task.cancel()
-||||||| base (slime@#2013 translated)
-        meta = data.get("meta_info") or {}
-        output_token_logprobs = meta.get("output_token_logprobs") or []
-        output_ids = [x[1] for x in output_token_logprobs]
-        output_log_probs = [float(x[0]) for x in output_token_logprobs]
-        finish = (meta.get("finish_reason") or {}).get("type", "stop") or "stop"
-    except (asyncio.CancelledError, aiohttp.ClientError, asyncio.TimeoutError):
-        try:
-            async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=5)) as s2:
-                await s2.post(f"{vllm_url}/abort_request", json={"rid": rid})
-        except Exception:
-            pass
-=======
-        meta = data.get("meta_info") or {}
-        output_token_logprobs = meta.get("output_token_logprobs") or []
-        output_ids = [x[1] for x in output_token_logprobs]
-        output_log_probs = [float(x[0]) for x in output_token_logprobs]
-        finish = (meta.get("finish_reason") or {}).get("type", "stop") or "stop"
-    except (asyncio.CancelledError, aiohttp.ClientError, asyncio.TimeoutError) as e:
-        # free the vllm slot eagerly on client cancel/timeout, else the
-        # orphaned generation keeps occupying KV until its own length cap
-        logger.debug("[%s] sid=%s rid=%s turn aborted: %s", adapter.log_prefix, session_id, rid, type(e).__name__)
-        try:
-            async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=5)) as s2:
-                await s2.post(f"{vllm_url}/abort_request", json={"rid": rid})
-        except Exception:
-            pass
->>>>>>> theirs (slime@#2125 translated)
         raise
 
     return TurnRecord(

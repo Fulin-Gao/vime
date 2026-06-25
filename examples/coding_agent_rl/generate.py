@@ -2,77 +2,6 @@
 
     --custom-generate-function-path examples.coding_agent_rl.generate.generate
 
-<<<<<<< ours (vime current)
-``generate()`` is intentionally a small four-stage orchestrator:
-
-    1. ``sandbox.run_claude_code`` prepares the agent sandbox and runs claude-code.
-    2. ``sandbox.git_diff`` captures the model-produced patch.
-    3. ``sandbox.evaluate`` scores that patch in a second clean sandbox.
-    4. ``_merge_samples`` combines reward + adapter ``TokenSegment``s,
-       delegating segment-to-``Sample`` fan-out to ``vime.agent.trajectory``.
-
-All sandbox-side details live in ``sandbox.py``; the LLM plumbing
-(Anthropic <-> vLLM /inference/v1/generate, token capture, 3-kind segment split) uses
-``vime.agent.adapters.AnthropicAdapter``.
-
-Dataset row ``metadata`` schema::
-
-    image:             str        # sandbox image
-    workdir:           str        # repo path inside the sandbox
-    problem_statement: str        # issue body (falls back to sample.prompt)
-    swepro:            dict|None  # SWE-bench Pro test harness (preferred)
-    eval_cmd:          str|None   # last-resort: shell command (exit 0 = solved)
-
-Also accepted (sweb-style rows): ``metadata.remote_env_info.f2p_script`` —
-a self-contained Python test file ending in ``sys.exit(pytest.main(...))``.
-When ``eval_cmd`` is absent, ``_metadata`` wraps this script into a base64
-materialize-and-run shell command so the existing eval path stays unchanged.
-
-Env knobs (set in run.sh):
-
-    SWE_HOST_NODE_TARBALL    host path to a Node 22 tarball (REQUIRED)
-    SWE_HOST_CC_TARBALL      host path to the Claude Code npm tarball (REQUIRED)
-    SWE_TIME_BUDGET_SEC      1800  per agent run, wallclock
-    SWE_EVAL_TIMEOUT_SEC     600   per eval test execution
-    SHIM_BIND_HOST           0.0.0.0
-    SHIM_PORT                18001
-    VIME_HEAD_HOST           public host the sandboxes use to reach the adapter (REQUIRED)
-||||||| base (slime@#2013 translated)
-``generate()`` is intentionally a small four-stage orchestrator:
-
-    1. ``sandbox.run_claude_code`` prepares the agent sandbox and runs claude-code.
-    2. ``sandbox.git_diff`` captures the model-produced patch.
-    3. ``sandbox.evaluate`` scores that patch in a second clean sandbox.
-    4. ``_merge_samples`` combines reward + adapter ``TokenSegment``s,
-       delegating segment-to-``Sample`` fan-out to ``vime.agent.trajectory``.
-
-All sandbox-side details live in ``sandbox.py``; the LLM plumbing
-(Anthropic <-> vLLM /generate, token capture, 3-kind segment split) uses
-``vime.agent.adapters.AnthropicAdapter``.
-
-Dataset row ``metadata`` schema::
-
-    image:             str        # sandbox image
-    workdir:           str        # repo path inside the sandbox
-    problem_statement: str        # issue body (falls back to sample.prompt)
-    swepro:            dict|None  # SWE-bench Pro test harness (preferred)
-    eval_cmd:          str|None   # last-resort: shell command (exit 0 = solved)
-
-Also accepted (sweb-style rows): ``metadata.remote_env_info.f2p_script`` —
-a self-contained Python test file ending in ``sys.exit(pytest.main(...))``.
-When ``eval_cmd`` is absent, ``_metadata`` wraps this script into a base64
-materialize-and-run shell command so the existing eval path stays unchanged.
-
-Env knobs (set in run.sh):
-
-    SWE_HOST_NODE_TARBALL    host path to a Node 22 tarball (REQUIRED)
-    SWE_HOST_CC_TARBALL      host path to the Claude Code npm tarball (REQUIRED)
-    SWE_TIME_BUDGET_SEC      1800  per agent run, wallclock
-    SWE_EVAL_TIMEOUT_SEC     600   per eval test execution
-    SHIM_BIND_HOST           0.0.0.0
-    SHIM_PORT                18001
-    VIME_HEAD_HOST          public host the sandboxes use to reach the adapter (REQUIRED)
-=======
 generate() is a four-stage orchestrator: swe.prepare_workspace + harness.run
 -> swe.git_diff -> swe.evaluate -> adapter.finish_session. The (harness, adapter)
 pair is chosen by the SWE_AGENT env var (claude_code | codex); see _AGENTS below.
@@ -80,10 +9,9 @@ Sandbox-side work is split across three layers: the provider-agnostic sandbox
 contract (vime.agent.sandbox), the swappable harness lifecycle
 (vime.agent.harness), and the SWE task layer (examples.coding_agent_rl.swe --
 dataset parsing, workspace prep, diff, eval). LLM plumbing (Anthropic / OpenAI
-<-> vLLM /generate, token capture, segment split) is the matching
-vime.agent.adapters adapter. swe.get_metadata documents the dataset row schema
-and produces the md dict consumed below.
->>>>>>> theirs (slime@#2125 translated)
+<-> vLLM ``/inference/v1/generate``, token capture, segment split) is the
+matching vime.agent.adapters adapter. swe.get_metadata documents the dataset row
+schema and produces the md dict consumed below.
 """
 
 from __future__ import annotations
@@ -221,20 +149,9 @@ class _AdapterService(metaclass=SingletonMeta):
             fork_threshold_tokens=CONFIG.fork_merge_threshold,
         )
         # handler_cancellation=True so a client disconnect cancels the handler
-<<<<<<< ours (vime current)
         # coroutine, tearing down the in-flight engine ``/inference/v1/generate``
         # request. Without it a cancelled client leaves an inflight generate that
         # races with the next release_memory_occupation.
-||||||| base (slime@#2013 translated)
-        # coroutine, arming the fire-and-forget /abort_request inside the
-        # adapter. Without it a cancelled client leaves an inflight vllm
-        # /generate that races with the next release_memory_occupation and
-        # trips vllm's "server is idle" assertion.
-=======
-        # coroutine, arming the fire-and-forget /abort_request in the adapter.
-        # Otherwise a cancelled client leaves an inflight vllm /generate that
-        # races the next release_memory_occupation and trips its idle assertion.
->>>>>>> theirs (slime@#2125 translated)
         self.app_handle = run_app_in_thread(
             self.adapter.app,
             host=CONFIG.adapter_bind_host,

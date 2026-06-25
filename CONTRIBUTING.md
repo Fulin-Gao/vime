@@ -6,7 +6,6 @@ Thank you for your interest in contributing to vime! This document describes our
 
 ## Table of Contents
 
-<<<<<<< ours (vime current)
 - [About vime](#about-vime)
 - [Project Principles](#project-principles)
 - [How Can I Contribute?](#how-can-i-contribute)
@@ -17,11 +16,6 @@ Thank you for your interest in contributing to vime! This document describes our
 - [Reporting Bugs](#reporting-bugs)
 - [Requesting Features](#requesting-features)
 - [License](#license)
-||||||| base (slime@#2013 translated)
-vime is the RL training infrastructure behind [GLM-4.5 through GLM-5.1](https://z.ai) and a large number of internal experiments at Z.ai. We open-sourced vime because we believe the training scenarios used internally cover the majority of cutting-edge RL algorithm requirements, and we hope to provide the community with a correct and efficient large-scale RL training infrastructure.
-=======
-vime is the RL training infrastructure behind [GLM-4.5 through GLM-5.2](https://z.ai) and a large number of internal experiments at Z.ai. We open-sourced vime because we believe the training scenarios used internally cover the majority of cutting-edge RL algorithm requirements, and we hope to provide the community with a correct and efficient large-scale RL training infrastructure.
->>>>>>> theirs (slime@#2125 translated)
 
 ## About vime
 

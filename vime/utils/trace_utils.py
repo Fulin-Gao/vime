@@ -14,25 +14,6 @@ from typing import Any
 from vime.utils.types import Sample
 
 TRACE_VERSION = 1
-<<<<<<< ours (vime current)
-||||||| base (slime@#2013 translated)
-VLLM_TRACE_META_KEYS = (
-    "prompt_tokens",
-    "completion_tokens",
-    "cached_tokens",
-    "pd_prefill_bootstrap_queue_duration",
-    "pd_prefill_forward_duration",
-    "pd_prefill_transfer_queue_duration",
-    "pd_prefill_retry_count",
-    "pd_decode_prealloc_duration",
-    "pd_decode_transfer_duration",
-    "pd_decode_forward_duration",
-    "pd_bootstrap_duration",
-    "pd_alloc_waiting_duration",
-    "pd_transfer_speed_gb_s",
-    "pd_transfer_total_mb",
-)
-=======
 TRACE_CHILDREN_KEY = "_trace_children"
 VLLM_TRACE_META_KEYS = (
     "prompt_tokens",
@@ -61,7 +42,6 @@ VLLM_PD_SUMMARY_KEYS = (
     "pd_transfer_total_mb",
     "pd_prefill_retry_count",
 )
->>>>>>> theirs (slime@#2125 translated)
 
 logger = logging.getLogger(__name__)
 _TRACE_STACK: contextvars.ContextVar[tuple[tuple[str, str], ...]] = contextvars.ContextVar(
@@ -163,7 +143,6 @@ def _new_span_id() -> str:
     return uuid.uuid4().hex
 
 
-<<<<<<< ours (vime current)
 def build_vllm_meta_trace_attrs(output: dict[str, Any]) -> dict[str, Any]:
     """Trace-span attributes from a vLLM ``/inference/v1/generate`` response."""
     attrs: dict[str, Any] = {}
@@ -174,30 +153,6 @@ def build_vllm_meta_trace_attrs(output: dict[str, Any]) -> dict[str, Any]:
     for key in ("prompt_tokens", "completion_tokens", "cached_tokens"):
         if usage.get(key) is not None:
             attrs[key] = usage[key]
-||||||| base (slime@#2013 translated)
-def build_vllm_meta_trace_attrs(meta: dict[str, Any]) -> dict[str, Any]:
-    attrs = {key: meta[key] for key in VLLM_TRACE_META_KEYS if key in meta and meta[key] is not None}
-    attrs["finish_reason"] = meta["finish_reason"]["type"]
-=======
-def build_vllm_meta_trace_attrs(meta: dict[str, Any]) -> dict[str, Any]:
-    attrs: dict[str, Any] = {}
-    try:
-        attrs.update({key: meta[key] for key in VLLM_TRACE_META_KEYS if key in meta and meta[key] is not None})
-        finish_reason = meta.get("finish_reason")
-        if isinstance(finish_reason, dict) and finish_reason.get("type") is not None:
-            attrs["finish_reason"] = finish_reason["type"]
-        elif finish_reason is not None:
-            attrs["finish_reason"] = finish_reason
-
-        if meta.get("id") is not None:
-            attrs["vllm_request_id"] = meta["id"]
-
-        trace_children = _build_vllm_pd_trace_children(meta)
-        if trace_children:
-            attrs[TRACE_CHILDREN_KEY] = trace_children
-    except Exception as exc:
-        _log_trace_error("vllm_meta_attrs", exc)
->>>>>>> theirs (slime@#2125 translated)
     return attrs
 
 

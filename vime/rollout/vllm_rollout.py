@@ -2,13 +2,8 @@ import asyncio
 import base64
 import copy
 import inspect
-<<<<<<< ours (vime current)
 import io
 import json
-||||||| base (slime@#2013 translated)
-=======
-import json
->>>>>>> theirs (slime@#2125 translated)
 import logging
 import uuid
 from argparse import Namespace
@@ -17,19 +12,9 @@ from contextlib import contextmanager
 from typing import Any
 
 import numpy as np
-<<<<<<< ours (vime current)
 import vllm_router  # noqa: F401 — ensures vllm-router is importable on startup
-||||||| base (slime@#2013 translated)
-import pybase64
-import vllm_router
-from packaging.version import parse
-=======
-import vllm_router
-from packaging.version import parse
->>>>>>> theirs (slime@#2125 translated)
 from tqdm import tqdm
 
-from vime.backends.vllm_utils.server_control import abort_servers_until_idle
 from vime.rollout.base_types import RolloutFnEvalOutput, RolloutFnTrainOutput
 from vime.rollout.filter_hub.base_types import MetricGatherer, call_dynamic_filter
 from vime.utils.async_utils import run
@@ -378,29 +363,7 @@ async def generate(args: Namespace, sample: Sample, sampling_params: dict[str, A
     skip_decode = True if skip_sp is None else bool(skip_sp)
     text = state.tokenizer.decode(new_response_tokens, skip_special_tokens=skip_decode) if new_response_tokens else ""
 
-<<<<<<< ours (vime current)
-    sample.tokens = sample.tokens + new_response_tokens
-    sample.response_length += len(new_response_tokens)
-    sample.response += text
-
-    if sample.loss_mask is not None:
-        assert args.partial_rollout and args.mask_offpolicy_in_partial_rollout
-        sample.loss_mask += [1] * len(new_response_tokens)
-
-    if sample.rollout_log_probs is None:
-        sample.rollout_log_probs = []
-    sample.rollout_log_probs += new_response_log_probs
-
-    if choice.get("routed_experts") is not None:
-        raw = base64.b64decode(choice["routed_experts"].encode("ascii"), validate=True)
-        arr = np.load(io.BytesIO(raw), allow_pickle=False)
-        sample.rollout_routed_experts = np.ascontiguousarray(arr.astype(np.int32, copy=True)).reshape(
-            len(sample.tokens) - 1,
-            args.num_layers,
-            args.moe_router_topk,
-        )
-
-    # Build meta_info for update_from_meta_info
+    # Build meta_info from the vLLM `choices` response format.
     fr = choice.get("finish_reason") or "stop"
     if isinstance(fr, dict):
         finish = fr
@@ -415,43 +378,24 @@ async def generate(args: Namespace, sample: Sample, sampling_params: dict[str, A
     if usage:
         meta["prompt_tokens"] = usage.get("prompt_tokens", 0)
         meta["completion_tokens"] = usage.get("completion_tokens", 0)
-    sample.update_from_meta_info(args, meta)
-||||||| base (slime@#2013 translated)
-    # Update sample with tokens directly - avoiding re-tokenization
-    sample.tokens = sample.tokens + new_response_tokens
-    sample.response_length += len(new_response_tokens)
-    sample.response += output["text"]
 
-    # When partial rollout and masking off policy is enabled, update the loss mask
-    if sample.loss_mask is not None:
-        assert args.partial_rollout and args.mask_offpolicy_in_partial_rollout
-        sample.loss_mask += [1] * len(new_response_tokens)
-
-    if sample.rollout_log_probs is None:
-        sample.rollout_log_probs = []
-    sample.rollout_log_probs += new_response_log_probs
-
-    if "routed_experts" in output["meta_info"]:
-        sample.rollout_routed_experts = np.frombuffer(
-            pybase64.b64decode(output["meta_info"]["routed_experts"].encode("ascii")),
-            dtype=np.int32,
-        ).reshape(
-            len(sample.tokens) - 1,
-            args.num_layers,
-            args.moe_router_topk,
-        )
-
-    sample.update_from_meta_info(args, output["meta_info"])
-=======
     sample.append_response_tokens(
         args,
         tokens=new_response_tokens,
         log_probs=new_response_log_probs,
         trainable=True,
-        meta_info=output["meta_info"],
-        text=output["text"],
+        meta_info=meta,
+        text=text,
     )
->>>>>>> theirs (slime@#2125 translated)
+
+    if choice.get("routed_experts") is not None:
+        raw = base64.b64decode(choice["routed_experts"].encode("ascii"), validate=True)
+        arr = np.load(io.BytesIO(raw), allow_pickle=False)
+        sample.rollout_routed_experts = np.ascontiguousarray(arr.astype(np.int32, copy=True)).reshape(
+            len(sample.tokens) - 1,
+            args.num_layers,
+            args.moe_router_topk,
+        )
 
     return sample
 
@@ -575,7 +519,6 @@ async def abort(args: Namespace, rollout_id: int) -> list[list[Sample]]:
     assert not state.aborted
     state.aborted = True
 
-<<<<<<< ours (vime current)
     urls: list[str] = []
     paused_workers = False
     if state.pendings:
@@ -594,30 +537,6 @@ async def abort(args: Namespace, rollout_id: int) -> list[list[Sample]]:
             if isinstance(result, Exception):
                 logger.warning(f"Failed to abort worker at {url}: {result}")
         paused_workers = True
-||||||| base (slime@#2013 translated)
-    if parse(vllm_router.__version__) <= parse("0.2.1"):
-        response = await get(f"http://{args.vllm_router_ip}:{args.vllm_router_port}/list_workers")
-        urls = response["urls"]
-    else:
-        response = await get(f"http://{args.vllm_router_ip}:{args.vllm_router_port}/workers")
-        urls = [worker["url"] for worker in response["workers"]]
-
-    logger.info(f"Abort request for {urls}")
-    abort_tasks = [post(f"{url}/abort_request", {"abort_all": True}) for url in urls]
-    abort_results = await asyncio.gather(*abort_tasks, return_exceptions=True)
-    for url, result in zip(urls, abort_results, strict=False):
-        if isinstance(result, Exception):
-            logger.warning(f"Failed to abort worker at {url}: {result}")
-=======
-    if parse(vllm_router.__version__) <= parse("0.2.1"):
-        response = await get(f"http://{args.vllm_router_ip}:{args.vllm_router_port}/list_workers")
-        urls = response["urls"]
-    else:
-        response = await get(f"http://{args.vllm_router_ip}:{args.vllm_router_port}/workers")
-        urls = [worker["url"] for worker in response["workers"]]
-
-    await abort_servers_until_idle(urls)
->>>>>>> theirs (slime@#2125 translated)
 
     count = 0
     while state.pendings:

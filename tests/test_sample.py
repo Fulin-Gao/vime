@@ -178,13 +178,7 @@ def test_round_trip_through_default_constructed_sample():
 
 
 def _make_args(speculative: bool = False) -> argparse.Namespace:
-<<<<<<< ours (vime current)
-    """``update_from_meta_info`` only consults ``args.vllm_speculative_config``
-||||||| base (slime@#2013 translated)
-    """``update_from_meta_info`` only consults ``args.vllm_speculative_algorithm``
-=======
     """``append_response_tokens`` only consults ``args.vllm_speculative_algorithm``
->>>>>>> theirs (slime@#2125 translated)
     — minimal stub is enough."""
     return argparse.Namespace(vllm_speculative_config=speculative)
 

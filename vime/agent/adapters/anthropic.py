@@ -1,30 +1,10 @@
 """Anthropic Messages adapter for agent rollouts.
 
-<<<<<<< ours (vime current)
-The adapter exposes ``/v1/messages`` and ``/v1/messages/count_tokens``. It
-renders each Anthropic message history with the served model's chat template,
-calls vLLM's ``/inference/v1/generate`` with ``token_ids``, and
-records the exact sampled token ids/logprobs as ``TurnRecord`` objects. New
-code should use ``AnthropicAdapter`` and call ``finish_session()`` at trajectory
-end to drain trainable ``TokenSegment`` objects.
-
-It also handles Claude Code sub-agent and compaction patterns by splitting one
-session into ``subagent``, ``wipe``, and ``final`` segments.
-||||||| base (slime@#2013 translated)
-The adapter exposes ``/v1/messages`` and ``/v1/messages/count_tokens``. It
-renders each Anthropic message history with the served model's chat template,
-calls vLLM ``/generate`` with ``input_ids``, and records the exact sampled
-token ids/logprobs as ``TurnRecord`` objects. New code should use
-``AnthropicAdapter`` and call ``finish_session()`` at trajectory end to drain
-trainable ``TokenSegment`` objects.
-
-It also handles Claude Code sub-agent and compaction patterns by splitting one
-session into ``subagent``, ``wipe``, and ``final`` segments.
-=======
 Exposes /v1/messages and /v1/messages/count_tokens. Each Anthropic message
 history is rendered with the served model's chat template, sent to vllm
-/generate as input_ids, and fed into a shared TrajectoryManager keyed by session
-id. finish_session(sid) drains a session's trajectory into a list of Sample.
+``/inference/v1/generate`` as ``token_ids``, and fed into a shared
+TrajectoryManager keyed by session id. finish_session(sid) drains a session's
+trajectory into a list of Sample.
 
 The per-sid tree inside TrajectoryManager handles sub-agent and compaction
 patterns automatically: any divergence in the prompt prefix forks into a new
@@ -33,7 +13,6 @@ leaf, so we do not track explicit chains here.
 This module mirrors vime.agent.adapters.openai; the section layout (adapter
 class -> translation -> reply building -> request framing) is shared between
 them. See BaseAdapter for the hooks to fill.
->>>>>>> theirs (slime@#2125 translated)
 """
 
 from __future__ import annotations
@@ -163,119 +142,7 @@ def _tools_to_chat_tools(anth_tools: list[dict] | None) -> list[dict] | None:
     return ts or None
 
 
-<<<<<<< ours (vime current)
-def _replace_chat_messages(target: Chain, body: dict) -> None:
-    """new/wipe: full reset of chat state and turn log."""
-    all_msgs = body.get("messages") or []
-    target.chat_messages = _translate_anthropic(all_msgs, body.get("system"))
-    if "system" in body:
-        target.system_hash = _hash(body.get("system"))
-    target.turns.clear()
-    target.seen_msgs = len(all_msgs)
-    target.msg_hashes = [_hash(m) for m in all_msgs]
-    if target.tools_schema is None:
-        target.tools_schema = _anthropic_tools_to_chat_tools(body.get("tools"))
-
-
-def _extend_chat_messages(target: Chain, body: dict) -> None:
-    """append: translate only the new tail."""
-    all_msgs = body.get("messages") or []
-    translated = _translate_anthropic(all_msgs[target.seen_msgs :], None)
-    target.chat_messages.extend(translated)
-
-    target.seen_msgs = len(all_msgs)
-    target.msg_hashes = [_hash(m) for m in all_msgs]
-    if target.tools_schema is None:
-        target.tools_schema = _anthropic_tools_to_chat_tools(body.get("tools"))
-
-
-def _build_prompt(target: Chain, body: dict, kind: str, tok) -> list[int]:
-    """Replace/extend chat_messages and render input ids for vLLM."""
-    (_extend_chat_messages if kind == "append" else _replace_chat_messages)(target, body)
-    return render_token_ids(target, tok)
-
-||||||| base (slime@#2013 translated)
-def _replace_chat_messages(target: Chain, body: dict) -> None:
-    """new/wipe: full reset of chat state and turn log."""
-    all_msgs = body.get("messages") or []
-    target.chat_messages = _translate_anthropic(all_msgs, body.get("system"))
-    if "system" in body:
-        target.system_hash = _hash(body.get("system"))
-    target.turns.clear()
-    target.seen_msgs = len(all_msgs)
-    target.msg_hashes = [_hash(m) for m in all_msgs]
-    if target.tools_schema is None:
-        target.tools_schema = _anthropic_tools_to_chat_tools(body.get("tools"))
-
-
-def _extend_chat_messages(target: Chain, body: dict) -> None:
-    """append: translate only the new tail."""
-    all_msgs = body.get("messages") or []
-    translated = _translate_anthropic(all_msgs[target.seen_msgs :], None)
-    target.chat_messages.extend(translated)
-
-    target.seen_msgs = len(all_msgs)
-    target.msg_hashes = [_hash(m) for m in all_msgs]
-    if target.tools_schema is None:
-        target.tools_schema = _anthropic_tools_to_chat_tools(body.get("tools"))
-
-
-def _build_prompt(target: Chain, body: dict, kind: str, tok) -> list[int]:
-    """Replace/extend chat_messages and render input ids for vllm."""
-    (_extend_chat_messages if kind == "append" else _replace_chat_messages)(target, body)
-    return render_token_ids(target, tok)
-
-=======
 # --- Reply building: parsed output -> Anthropic blocks + manager_message ---
->>>>>>> theirs (slime@#2125 translated)
-
-<<<<<<< ours (vime current)
-async def _generate(
-    prompt_ids: list[int], s: Session, body: dict, app, *, session_id: str | None = None
-) -> TurnRecord:
-    """Call vLLM and return a TurnRecord.
-
-    1. build sampling_params (session defaults overlaid with body overrides)
-    2. POST vLLM ``/inference/v1/generate``; on cancel/error tear down
-       the request (vLLM has no per-request HTTP abort endpoint)
-    3. keep the exact prompt/output token ids; trajectory merge later compares
-       later prompt tokens with earlier outputs to build the loss mask
-    """
-    return await call_vllm_generate(
-        prompt_ids,
-        s,
-        body,
-        app,
-        max_token_keys=("max_tokens",),
-        stop_keys=("stop_sequences",),
-        log_prefix="anthropic_adapter",
-        logger=logger,
-        session_id=session_id,
-    )
-||||||| base (slime@#2013 translated)
-async def _generate(
-    prompt_ids: list[int], s: Session, body: dict, app, *, session_id: str | None = None
-) -> TurnRecord:
-    """Call vllm and return a TurnRecord.
-
-    1. build sampling_params (session defaults overlaid with body overrides)
-    2. POST vllm /generate; on cancel/error fire /abort_request
-    3. keep the exact prompt/output token ids; trajectory merge later compares
-       later prompt tokens with earlier outputs to build the loss mask
-    """
-    return await call_vllm_generate(
-        prompt_ids,
-        s,
-        body,
-        app,
-        max_token_keys=("max_tokens",),
-        stop_keys=("stop_sequences",),
-        log_prefix="anthropic_adapter",
-        logger=logger,
-        session_id=session_id,
-    )
-=======
->>>>>>> theirs (slime@#2125 translated)
 
 def _build_reply_parts(
     parsed: ParsedModelOutput,
@@ -283,67 +150,10 @@ def _build_reply_parts(
 ) -> tuple[list[dict], str, dict[str, Any]]:
     """Return (anthropic blocks, wire stop_reason, manager_message).
 
-<<<<<<< ours (vime current)
-def _build_reply(target: Chain, output_ids: list[int], finish: str, app) -> tuple[list[dict], str, str]:
-    """Turn the model's raw output ids into the reply we send back to claude-code.
-
-    1. parse decoded text -> (thinking, visible, tool_uses) via parsers
-    2. pack into Anthropic content blocks; tag dispatch_id when a tool_use
-       names Task/Agent (sub-agent trigger)
-    3. derive stop_reason: 'tool_use' | 'max_tokens' | 'end_turn'
-
-    Returns (blocks, stop_reason, dispatch_id).
-||||||| base (slime@#2013 translated)
-def _build_reply(target: Chain, output_ids: list[int], finish: str, app) -> tuple[list[dict], str, str]:
-    """Turn the model's raw output ids into the reply we send back to claude-code.
-
-    1. parse decoded text -> (thinking, visible, tool_uses) via vllm parsers
-    2. pack into Anthropic content blocks; tag dispatch_id when a tool_use
-       names Task/Agent (sub-agent trigger)
-    3. derive stop_reason: 'tool_use' | 'max_tokens' | 'end_turn'
-
-    Returns (blocks, stop_reason, dispatch_id).
-=======
     The tool_calls inside manager_message use canonical args (tool_call_dict) so
     this assistant turn compares equal (dict equality) to the same turn replayed
     as history on the next request.
->>>>>>> theirs (slime@#2125 translated)
     """
-<<<<<<< ours (vime current)
-    tok = app[TOKENIZER_KEY]
-
-    raw_output = tok.decode(output_ids, skip_special_tokens=False) if output_ids else ""
-    parsed = parse_model_output(
-        raw_output,
-        tokenizer=tok,
-        tools_schema=target.tools_schema,
-        tool_parser_name=app[TOOL_PARSER_KEY],
-        reasoning_parser_name=app[REASONING_PARSER_KEY],
-    )
-    blocks, dispatch_id = _anthropic_blocks(parsed.reasoning, parsed.text, parsed.tool_uses)
-    return blocks, _stop_reason(parsed.tool_uses, finish), dispatch_id
-
-
-def _anthropic_blocks(thinking: str, visible: str, tool_uses: list[dict]) -> tuple[list[dict], str]:
-    """Pack parsed model output into Anthropic content blocks."""
-||||||| base (slime@#2013 translated)
-    tok = app[TOKENIZER_KEY]
-
-    raw_output = tok.decode(output_ids, skip_special_tokens=False) if output_ids else ""
-    parsed = parse_model_output(
-        raw_output,
-        tools_schema=target.tools_schema,
-        tool_parser_name=app[TOOL_PARSER_KEY],
-        reasoning_parser_name=app[REASONING_PARSER_KEY],
-    )
-    blocks, dispatch_id = _anthropic_blocks(parsed.reasoning, parsed.text, parsed.tool_uses)
-    return blocks, _stop_reason(parsed.tool_uses, finish), dispatch_id
-
-
-def _anthropic_blocks(thinking: str, visible: str, tool_uses: list[dict]) -> tuple[list[dict], str]:
-    """Pack parsed model output into Anthropic content blocks."""
-=======
->>>>>>> theirs (slime@#2125 translated)
     blocks: list[dict] = []
     if parsed.reasoning:
         blocks.append({"type": "thinking", "thinking": parsed.reasoning})

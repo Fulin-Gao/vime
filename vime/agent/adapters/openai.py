@@ -1,35 +1,15 @@
-<<<<<<< ours (vime current)
-"""OpenAI-compatible adapters for agent rollouts.
-
-The adapter exposes ``/v1/chat/completions`` and ``/v1/responses``. Both
-endpoints render incoming messages with the served model's chat template, call
-vLLM's ``/inference/v1/generate`` with ``token_ids``, and record
-the exact sampled token ids/logprobs as ``TurnRecord`` objects. New code should
-use ``OpenAIAdapter`` and call ``finish_session()`` at trajectory end to drain
-trainable ``TokenSegment`` objects.
-||||||| base (slime@#2013 translated)
-"""OpenAI-compatible adapters for agent rollouts.
-
-The adapter exposes ``/v1/chat/completions`` and ``/v1/responses``. Both
-endpoints render incoming messages with the served model's chat template, call
-vLLM ``/generate`` with ``input_ids``, and record the exact sampled token
-ids/logprobs as ``TurnRecord`` objects. New code should use ``OpenAIAdapter``
-and call ``finish_session()`` at trajectory end to drain trainable
-``TokenSegment`` objects.
-=======
 """OpenAI Chat-Completions adapter for agent rollouts.
 
 Mirrors vime.agent.adapters.anthropic but speaks the OpenAI
 /v1/chat/completions protocol, so an OpenAI-compatible client (e.g. the Codex
 CLI) can drive the vime vllm server. Each request is rendered with the served
-model's chat template, sent to vllm /generate as input_ids, parsed, and folded
-into a shared TrajectoryManager keyed by session id. finish_session(sid) drains
-a session's trajectory into a list of Sample.
+model's chat template, sent to vllm ``/inference/v1/generate`` as ``token_ids``,
+parsed, and folded into a shared TrajectoryManager keyed by session id.
+finish_session(sid) drains a session's trajectory into a list of Sample.
 
 Only /v1/chat/completions is implemented; the Responses API (/v1/responses) is
 out of scope. The section layout (adapter class -> translation -> reply building
 -> request framing) mirrors vime.agent.adapters.anthropic.
->>>>>>> theirs (slime@#2125 translated)
 """
 
 from __future__ import annotations
@@ -228,31 +208,8 @@ def _tools_to_chat_tools(tools: list[dict] | None) -> list[dict] | None:
 # --- Reply building: parsed output -> OpenAI wire message + manager_message ---
 
 
-<<<<<<< ours (vime current)
-def _parse_turn(target: Chain, turn: TurnRecord, app) -> ParsedModelOutput:
-    tok = app[TOKENIZER_KEY]
-    raw_output = tok.decode(turn.output_ids, skip_special_tokens=False) if turn.output_ids else ""
-    return parse_model_output(
-        raw_output,
-        tokenizer=tok,
-        tools_schema=target.tools_schema,
-        tool_parser_name=app[TOOL_PARSER_KEY],
-        reasoning_parser_name=app[REASONING_PARSER_KEY],
-    )
-||||||| base (slime@#2013 translated)
-def _parse_turn(target: Chain, turn: TurnRecord, app) -> ParsedModelOutput:
-    tok = app[TOKENIZER_KEY]
-    raw_output = tok.decode(turn.output_ids, skip_special_tokens=False) if turn.output_ids else ""
-    return parse_model_output(
-        raw_output,
-        tools_schema=target.tools_schema,
-        tool_parser_name=app[TOOL_PARSER_KEY],
-        reasoning_parser_name=app[REASONING_PARSER_KEY],
-    )
-=======
 def _build_reply_parts(parsed: ParsedModelOutput, finish: str) -> tuple[dict[str, Any], dict[str, Any], str]:
     """Return (wire_message, manager_message, wire_finish).
->>>>>>> theirs (slime@#2125 translated)
 
     wire_message follows the OpenAI Chat-Completions spec: tool_calls[].id is a
     unique correlation id and tool_calls[].function.arguments is a JSON-encoded

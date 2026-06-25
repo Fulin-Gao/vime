@@ -269,13 +269,6 @@ class Sample:
         ``trainable=False``; they receive loss-mask zeros and empty top-p spans
         when top-p replay is active.
         """
-<<<<<<< ours (vime current)
-        if args.vllm_speculative_config:
-            # cannot directly use spec info from vLLM because of partial rollout.
-||||||| base (slime@#2013 translated)
-        if args.vllm_speculative_algorithm:
-            # cannot directly use spec info from vllm because of partial rollout.
-=======
         tokens = _to_int_list(tokens)
         log_probs = _to_float_list(log_probs)
         if log_probs is not None and len(log_probs) != len(tokens):
@@ -369,9 +362,8 @@ class Sample:
         if not update_terminal_info or "finish_reason" not in meta_info:
             return
 
-        if getattr(args, "vllm_speculative_algorithm", False):
-            # cannot directly use spec info from vllm because of partial rollout.
->>>>>>> theirs (slime@#2125 translated)
+        if getattr(args, "vllm_speculative_config", None):
+            # cannot directly use spec info from vLLM because of partial rollout.
             self.spec_info.add(meta_info=meta_info)
 
         # Collect prefix cache statistics

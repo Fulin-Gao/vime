@@ -9,12 +9,8 @@ from typing import Any
 import yaml
 
 from vime.backends.vllm_utils.arguments import validate_args as vllm_validate_args
-<<<<<<< ours (vime current)
 from vime.backends.vllm_utils.arguments import vllm_parse_args
-||||||| base (slime@#2013 translated)
-=======
 from vime.backends.vllm_utils.external import apply_external_engine_info_to_args
->>>>>>> theirs (slime@#2125 translated)
 from vime.utils.eval_config import EvalDatasetConfig, build_eval_dataset_configs, ensure_dataset_list
 from vime.utils.logging_utils import configure_logger
 
@@ -136,70 +132,6 @@ def get_vime_extra_args_provider(add_custom_arguments=None):
                 default="raw",
                 help="The method to convert megatron weights to hugging face weights for vLLM.",
             )
-<<<<<<< ours (vime current)
-||||||| base (slime@#2013 translated)
-            # Delta weight sync.
-            parser.add_argument(
-                "--update-weight-mode",
-                choices=["full", "delta"],
-                default="full",
-                help=(
-                    "Weight sync strategy. 'full' (default) broadcasts every parameter "
-                    "every sync. 'delta' detects byte-level changes against a pinned-CPU "
-                    "snapshot of the previous broadcast and ships only the changed positions + values."
-                ),
-            )
-            parser.add_argument(
-                "--update-weight-transport",
-                choices=["nccl", "disk"],
-                default="nccl",
-                help=(
-                    "Per-flush carrier for --update-weight-mode=delta. 'nccl' broadcasts each "
-                    "bucket; 'disk' writes each bucket as a safetensors file under "
-                    "--update-weight-delta-dir and pushes once at end-of-sync."
-                ),
-            )
-            parser.add_argument(
-                "--update-weight-encoding",
-                choices=["indices", "deltas", "deltas_zstd"],
-                default="indices",
-                help=(
-                    "Position encoding for partial flushes. 'indices': int32 absolute "
-                    "positions (largest, lowest compute). 'deltas': uint16 gap-deltas "
-                    "with uint32 fallback (smaller). 'deltas_zstd': 'deltas' with the "
-                    "safetensors blob wrapped in zstd L1 (smallest, heaviest compute — "
-                    "best for shared-FS bandwidth ≤ ~300 MB/s)."
-                ),
-            )
-            parser.add_argument(
-                "--update-weight-delta-dir",
-                type=str,
-                default=None,
-                help=(
-                    "Filesystem directory for per-sync delta safetensors. Writable by the "
-                    "trainer, readable by every rollout engine. Required when "
-                    "--update-weight-transport=disk. One subdirectory per sync "
-                    "(``weight_v{N:06d}``), removed after every engine has acknowledged."
-                ),
-            )
-            parser.add_argument(
-                "--update-weight-delta-keep-files",
-                action="store_true",
-                default=False,
-                help="Skip post-apply cleanup of per-sync version directories. Useful for debugging.",
-            )
-            parser.add_argument(
-                "--custom-delta-pre-push-path",
-                type=str,
-                default=None,
-                help=(
-                    "Path to a custom function called by --update-weight-transport=disk after each "
-                    "trainer rank's files are durably on local disk, before rank 0 fires the engine "
-                    "RPCs. Signature: ``def hook(args, version_dir: str, rollout_engines) -> None``. "
-                    "Called from every trainer rank; the hook gates itself."
-                ),
-            )
-=======
             # Delta weight sync.
             parser.add_argument(
                 "--update-weight-mode",
@@ -280,7 +212,6 @@ def get_vime_extra_args_provider(add_custom_arguments=None):
                     "Called from every trainer rank; the hook gates itself."
                 ),
             )
->>>>>>> theirs (slime@#2125 translated)
             parser.add_argument(
                 "--custom-model-provider-path",
                 type=str,
@@ -1204,7 +1135,6 @@ def get_vime_extra_args_provider(add_custom_arguments=None):
             )
             return parser
 
-<<<<<<< ours (vime current)
         def add_router_arguments(parser):
             # vllm-router's full CLI surface (~30 knobs: policy, cache_threshold,
             # retries, health-check, …) under `--router-*` prefix (collision-safe).
@@ -1213,19 +1143,6 @@ def get_vime_extra_args_provider(add_custom_arguments=None):
             RouterArgs.add_cli_args(parser, use_router_prefix=True, exclude_host_port=True)
             return parser
 
-||||||| base (slime@#2013 translated)
-        def add_router_arguments(parser):
-            parser.add_argument(
-                "--use-vime-router",
-                action="store_true",
-                default=False,
-                help="Whether to use VimeRouter for text-based routing instead of vLLM token-based routing",
-            )
-            RouterArgs.add_cli_args(parser, use_router_prefix=True, exclude_host_port=True)
-            return parser
-
-=======
->>>>>>> theirs (slime@#2125 translated)
         # wandb
         def add_wandb_arguments(parser):
             # wandb parameters
@@ -1798,16 +1715,6 @@ def _resolve_eval_datasets(args) -> list[EvalDatasetConfig]:
 def _resolve_update_weight_disk_dir(args) -> None:
     """Normalize disk-sync directory args.
 
-<<<<<<< ours (vime current)
-||||||| base (slime@#2013 translated)
-    if args.use_vime_router:
-        logger.warning(
-            "--use-vime-router is deprecated and ignored. vime now always uses vllm_router "
-            "built from https://github.com/zhuzilin/sgl-router."
-        )
-        args.use_vime_router = False
-
-=======
     ``--update-weight-delta-dir`` is kept only as a compatibility alias. New
     code should use ``--update-weight-disk-dir`` because the directory belongs
     to the transport, not to the delta encoding mode.
@@ -1859,7 +1766,6 @@ def _validate_update_weight_args(args) -> None:
 def vime_validate_args(args):
     args.eval_datasets = _resolve_eval_datasets(args)
 
->>>>>>> theirs (slime@#2125 translated)
     if args.kl_coef != 0 or args.use_kl_loss:
         if not os.path.exists(args.ref_load):
             raise FileNotFoundError(f"ref_load {args.ref_load} does not exist, please check the path.")
@@ -2008,7 +1914,6 @@ def vime_validate_args(args):
     if args.debug_rollout_only:
         if args.colocate and args.rollout_num_gpus is None:
             args.rollout_num_gpus = args.actor_num_gpus_per_node * args.actor_num_nodes
-<<<<<<< ours (vime current)
             if args.num_gpus_per_node != args.actor_num_gpus_per_node:
                 logger.info(
                     f"debug_rollout_only colocate: overriding num_gpus_per_node "
@@ -2016,12 +1921,9 @@ def vime_validate_args(args):
                     f"{args.actor_num_gpus_per_node} (per-physical-node GPU count)."
                 )
                 args.num_gpus_per_node = args.actor_num_gpus_per_node
-||||||| base (slime@#2013 translated)
-=======
         elif args.rollout_num_gpus == 0:
             args.actor_num_gpus_per_node = 0
             args.actor_num_nodes = 0
->>>>>>> theirs (slime@#2125 translated)
         else:
             args.actor_num_gpus_per_node = min(8, args.rollout_num_gpus)
             args.actor_num_nodes = args.rollout_num_gpus // args.actor_num_gpus_per_node
@@ -2041,7 +1943,6 @@ def vime_validate_args(args):
             args.offload_train = True
         if args.offload_rollout is None:
             args.offload_rollout = True
-<<<<<<< ours (vime current)
         # In colocate mode the rollout engines share the actor's physical nodes, so the
         # GPUs-per-physical-node equals actor_num_gpus_per_node. --num-gpus-per-node defaults
         # to 8 (an 8-GPU/node assumption); on hardware with a different per-node count (e.g.
@@ -2055,20 +1956,7 @@ def vime_validate_args(args):
                 f"actor_num_gpus_per_node {args.actor_num_gpus_per_node} (per-physical-node GPU count)."
             )
             args.num_gpus_per_node = args.actor_num_gpus_per_node
-        if args.rollout_num_gpus != args.actor_num_gpus_per_node * args.actor_num_nodes:
-            logger.info(
-                f"rollout_num_gpus {args.rollout_num_gpus} != actor_num_gpus_per_node {args.actor_num_gpus_per_node} "
-                f"* actor_num_nodes {args.actor_num_nodes}, overriding rollout_num_gpus to match actor_num_gpus_per_node * actor_num_nodes."
-            )
-||||||| base (slime@#2013 translated)
-        if args.rollout_num_gpus != args.actor_num_gpus_per_node * args.actor_num_nodes:
-            logger.info(
-                f"rollout_num_gpus {args.rollout_num_gpus} != actor_num_gpus_per_node {args.actor_num_gpus_per_node} "
-                f"* actor_num_nodes {args.actor_num_nodes}, overriding rollout_num_gpus to match actor_num_gpus_per_node * actor_num_nodes."
-            )
-=======
         if args.rollout_num_gpus is None:
->>>>>>> theirs (slime@#2125 translated)
             args.rollout_num_gpus = args.actor_num_gpus_per_node * args.actor_num_nodes
         elif args.rollout_num_gpus == 0:
             logger.info("rollout_num_gpus is 0 under colocate; no local vLLM engines will be launched.")
@@ -2156,22 +2044,5 @@ def vime_validate_args(args):
 
     if args.only_train_params_name_list and args.freeze_params_name_list:
         raise ValueError("You can only specify ONE of: --only-train-params-name-list, or --freeze-params-name-list.")
-<<<<<<< ours (vime current)
-||||||| base (slime@#2013 translated)
-
-    if args.update_weight_mode == "delta":
-        if args.colocate:
-            raise ValueError(
-                "--update-weight-mode=delta is not supported with --colocate. Colocate transfers "
-                "weights via CUDA IPC (only a handle crosses processes), so the delta bookkeeping "
-                "(snapshot + diff + sparse encode) is pure overhead."
-            )
-        if args.update_weight_transport == "disk" and not args.update_weight_delta_dir:
-            raise ValueError(
-                "--update-weight-transport=disk requires --update-weight-delta-dir to point at "
-                "a filesystem shared between the trainer and the rollout engines."
-            )
-=======
 
     _validate_update_weight_args(args)
->>>>>>> theirs (slime@#2125 translated)

@@ -12,14 +12,8 @@ import ray
 import torch
 from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
 
-<<<<<<< ours (vime current)
-from vime.backends.vllm_utils.vllm_config import ModelConfig, ServerGroupConfig, VllmConfig
-||||||| base (slime@#2013 translated)
-from vime.backends.vllm_utils.vllm_config import ModelConfig, ServerGroupConfig, vLLMConfig
-=======
 from vime.backends.vllm_utils.external import start_external_rollout_servers
-from vime.backends.vllm_utils.vllm_config import ModelConfig, ServerGroupConfig, vLLMConfig
->>>>>>> theirs (slime@#2125 translated)
+from vime.backends.vllm_utils.vllm_config import ModelConfig, ServerGroupConfig, VllmConfig
 from vime.backends.vllm_utils.vllm_engine import VLLMEngine
 
 # Memory-type tag strings shared with the vLLM engine's sleep/wake_up API.
@@ -468,7 +462,6 @@ class RolloutManager:
                     self._health_monitors.append(monitor)
             self._ci_fault_injection_pending = self.args.ci_test  # Flag for CI fault injection
 
-<<<<<<< ours (vime current)
     def _get_metrics_router_addr(self) -> str | None:
         """Return the full Prometheus scrape URL for the rollout router.
 
@@ -488,26 +481,6 @@ class RolloutManager:
         """Public wrapper for remote calls from the driver process."""
         return self._get_metrics_router_addr()
 
-||||||| base (slime@#2013 translated)
-    def _get_metrics_router_addr(self) -> str | None:
-        """Return the router address for scraping vLLM engine metrics.
-
-        The vllm_router gateway exposes ``/engine_metrics`` on its main port,
-        which aggregates Prometheus metrics from all backend vllm servers.
-        Returns ``http://{ip}:{port}`` for the first server, or ``None`` when
-        metrics are disabled or no servers are running.
-        """
-        srv = self.server
-        if srv is None or srv.router_ip is None:
-            return None
-        return f"http://{srv.router_ip}:{srv.router_port}"
-
-    def get_metrics_router_addr(self) -> str | None:
-        """Public wrapper for remote calls from the driver process."""
-        return self._get_metrics_router_addr()
-
-=======
->>>>>>> theirs (slime@#2125 translated)
     def _try_ci_fault_injection(self):
         """Try to inject fault during generate (when health monitor is running)."""
         if not self._ci_fault_injection_pending:
@@ -1310,7 +1283,7 @@ def _resolve_vllm_config(args) -> VllmConfig:
         return config
 
     if args.rollout_num_gpus == 0:
-        return vLLMConfig(models=[ModelConfig(name="default", server_groups=[])])
+        return VllmConfig(models=[ModelConfig(name="default", server_groups=[])])
 
     if args.prefill_num_servers is not None:
         return VllmConfig.from_prefill_num_servers(args)
