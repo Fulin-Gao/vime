@@ -272,7 +272,11 @@ async def generate_streaming(args: Namespace, sample: Sample, sampling_params: d
                 [float(lp), int(tid)] for lp, tid in zip(new_response_log_probs, new_response_tokens, strict=True)
             ]
 
-        sample.update_from_meta_info(args, meta)
+        # #2110 renamed update_from_meta_info -> append_response_tokens. The streaming
+        # path already accumulates tokens/log_probs above (partial-rollout abort needs
+        # incremental state), so finalize metadata only: tokens omitted -> no re-append,
+        # _apply_meta_info still runs for finish_reason/usage/terminal info.
+        sample.append_response_tokens(args, meta_info=meta)
         # MoE routing replay (when requested) ships on the terminal choice. Guard the
         # value (not just key presence): vLLM includes ``routed_experts: null`` when
         # replay is off, matching vllm_rollout.generate's #183 fix.
