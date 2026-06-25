@@ -7,6 +7,7 @@ import warnings
 from typing import Any
 
 import yaml
+from vllm_router.launch_router import RouterArgs
 
 from vime.backends.vllm_utils.arguments import validate_args as vllm_validate_args
 from vime.backends.vllm_utils.arguments import vllm_parse_args

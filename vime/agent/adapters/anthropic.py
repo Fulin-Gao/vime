@@ -144,6 +144,7 @@ def _tools_to_chat_tools(anth_tools: list[dict] | None) -> list[dict] | None:
 
 # --- Reply building: parsed output -> Anthropic blocks + manager_message ---
 
+
 def _build_reply_parts(
     parsed: ParsedModelOutput,
     finish: str,

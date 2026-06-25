@@ -25,7 +25,7 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
-from tests.test_agent._fakes import FakeVLLMServer, FakeTokenizer  # noqa: E402
+from tests.test_agent._fakes import FakeTokenizer, FakeVLLMServer  # noqa: E402
 
 from vime.agent.adapters import anthropic, openai  # noqa: E402
 from vime.agent.parsing import parse_model_output, parse_xml_tool_uses  # noqa: E402
@@ -363,9 +363,7 @@ def test_anthropic_multiturn_wire_roundtrip_and_token_capture():
         assert tool_use["name"] == "lookup" and tool_use["input"] == {"query": "vime"}
         # both turns routed to the same sid; the adapter posted the growing prompt.
         assert vllm.routing_keys == ["sid-mt", "sid-mt"]
-        assert (
-            vllm.requests[1]["input_ids"][: len(vllm.requests[0]["input_ids"])] == vllm.requests[0]["input_ids"]
-        )
+        assert vllm.requests[1]["input_ids"][: len(vllm.requests[0]["input_ids"])] == vllm.requests[0]["input_ids"]
         # finish_session produces at least one aligned, partly-trained sample.
         assert samples
         for s in samples:

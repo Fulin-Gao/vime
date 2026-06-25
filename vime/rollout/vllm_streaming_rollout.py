@@ -160,8 +160,6 @@ async def generate_streaming(args: Namespace, sample: Sample, sampling_params: d
     base_response = sample.response or ""
     base_response_length = sample.response_length
     base_log_probs = None if sample.rollout_log_probs is None else list(sample.rollout_log_probs)
-    base_top_p_token_ids = sample.rollout_top_p_token_ids
-    base_top_p_token_offsets = sample.rollout_top_p_token_offsets
     base_loss_mask = list(sample.loss_mask) if sample.loss_mask is not None else None
 
     skip_sp = params.get("skip_special_tokens")
