@@ -1957,10 +1957,15 @@ def vime_validate_args(args):
                 f"actor_num_gpus_per_node {args.actor_num_gpus_per_node} (per-physical-node GPU count)."
             )
             args.num_gpus_per_node = args.actor_num_gpus_per_node
-        if args.rollout_num_gpus is None:
-            args.rollout_num_gpus = args.actor_num_gpus_per_node * args.actor_num_nodes
-        elif args.rollout_num_gpus == 0:
+        # vime keeps its UNCONDITIONAL re-derive (force rollout to all colocate GPUs on any
+        # mismatch, incl. None) — the num_gpus_per_node override above depends on it. The
+        # merge had wrongly swapped this for slime's `is None`-only form, leaving rollout
+        # mis-sized when a non-None value mismatched -> colocate IPC/memory breakage. The
+        # `== 0` branch is slime's #2016 addition (no local engines), checked first.
+        if args.rollout_num_gpus == 0:
             logger.info("rollout_num_gpus is 0 under colocate; no local vLLM engines will be launched.")
+        elif args.rollout_num_gpus != args.actor_num_gpus_per_node * args.actor_num_nodes:
+            args.rollout_num_gpus = args.actor_num_gpus_per_node * args.actor_num_nodes
 
     if args.offload_train is None:
         args.offload_train = False
