@@ -138,12 +138,15 @@ class ScriptedTokenizer:
 
 
 class FakeVLLMServer:
-    """Real aiohttp ``/generate`` upstream returning scripted turns.
+    """Real aiohttp ``/inference/v1/generate`` upstream returning scripted turns.
 
-    Each turn is a list of ``(logprob, token_id)`` pairs (vllm's
-    ``output_token_logprobs`` shape). Records every request body + routing key so
-    tests can assert the adapter posted the right ``input_ids`` / sampling params.
-    Use as an async context manager; ``.url`` is the base url to hand the adapter.
+    Each turn is a list of ``(logprob, token_id)`` pairs that the server emits as
+    a vLLM ``choices[0]`` payload (``token_ids`` + ``logprobs.content[i].logprob``
+    + a string ``finish_reason``), the shape
+    ``common._tokens_and_logprobs_from_choice`` parses. Records every request body
+    + the ``x-session-id`` routing header so tests can assert the adapter posted
+    the right ``token_ids`` / sampling params. Use as an async context manager;
+    ``.url`` is the base url to hand the adapter.
     """
 
     def __init__(self, turns: list[list[tuple[float, int]]], *, finish_reason: str = "stop") -> None:
@@ -155,16 +158,21 @@ class FakeVLLMServer:
         self._runner = None
 
     async def _handle(self, request: web.Request) -> web.Response:
-        self.routing_keys.append(request.headers.get("X-SMG-Routing-Key"))
+        self.routing_keys.append(request.headers.get("x-session-id"))
         self.requests.append(await request.json())
-        assert self.turns, "unexpected /generate call (turn script exhausted)"
+        assert self.turns, "unexpected /inference/v1/generate call (turn script exhausted)"
         pairs = self.turns.pop(0)
+        token_ids = [tid for _lp, tid in pairs]
+        content = [{"logprob": lp} for lp, _tid in pairs]
         return web.json_response(
             {
-                "meta_info": {
-                    "output_token_logprobs": [[lp, tid] for lp, tid in pairs],
-                    "finish_reason": {"type": self.finish_reason},
-                }
+                "choices": [
+                    {
+                        "token_ids": token_ids,
+                        "logprobs": {"content": content},
+                        "finish_reason": self.finish_reason,
+                    }
+                ]
             }
         )
 
@@ -172,7 +180,7 @@ class FakeVLLMServer:
         from aiohttp.test_utils import TestServer
 
         app = web.Application()
-        app.router.add_post("/generate", self._handle)
+        app.router.add_post("/inference/v1/generate", self._handle)
         self._server = TestServer(app)
         await self._server.start_server()
         self.url = str(self._server.make_url("")).rstrip("/")

@@ -11,8 +11,6 @@ from urllib.parse import quote
 
 import cloudpickle
 import requests
-import vllm_router
-from packaging.version import parse
 from vllm.utils.system_utils import kill_process_tree
 
 from vime.backends.vllm_utils.external import get_server_info
@@ -209,6 +207,9 @@ class VLLMEngine(RayActor):
             return
 
         if self.node_rank == 0 and self.router_ip and self.router_port:
+            import vllm_router
+            from packaging.version import parse
+
             worker_url = f"http://{self.server_host}:{self.server_port}"
             if parse(vllm_router.__version__) <= parse("0.2.1"):
                 assert self.worker_type == "regular", "pd disaggregation is not supported in old router."

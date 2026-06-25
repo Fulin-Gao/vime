@@ -270,6 +270,7 @@ def make_vime_validate_args(**overrides):
         debug_train_only=False,
         actor_num_gpus_per_node=8,
         actor_num_nodes=1,
+        num_gpus_per_node=8,
         offload=False,
         offload_train=None,
         offload_rollout=None,

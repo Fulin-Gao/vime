@@ -36,8 +36,9 @@ class TestVllmConfigUpdateWeights:
             }
         )
         config = VllmConfig.from_yaml(path)
-        config.models[0].resolve(Namespace(hf_checkpoint="/tmp/hf", rollout_num_gpus_per_engine=1))
         assert len(config.models) == 1
+        # Parsed default is None; VllmConfig.resolve() later infers True/False from
+        # whether model_path matches args.hf_checkpoint.
         assert config.models[0].update_weights is None
 
     def test_update_weights_explicit_false(self):
@@ -93,11 +94,11 @@ class TestVllmConfigUpdateWeights:
 
     def test_config_allows_model_with_no_server_groups(self):
         """A model with no server groups can expose a router without local engines."""
-        from vime.backends.vllm_utils.vllm_config import vLLMConfig
+        from vime.backends.vllm_utils.vllm_config import VllmConfig
 
         path = _write_yaml({"vllm": [{"name": "default", "server_groups": []}]})
 
-        config = vLLMConfig.from_yaml(path)
+        config = VllmConfig.from_yaml(path)
 
         assert len(config.models) == 1
         assert config.models[0].name == "default"
@@ -134,7 +135,7 @@ class TestZeroGpuRolloutConfig:
         def fake_start_router(args, *, has_pd_disaggregation=False, force_new=False):
             assert has_pd_disaggregation is False
             assert force_new is False
-            return "127.0.0.1", 3456
+            return "127.0.0.1", 3456, None
 
         monkeypatch.setattr(rollout_module, "_start_router", fake_start_router)
         args = Namespace(
@@ -172,7 +173,7 @@ class TestZeroGpuRolloutConfig:
         def fake_start_router(args, *, has_pd_disaggregation=False, force_new=False):
             assert has_pd_disaggregation is False
             assert force_new is False
-            return "127.0.0.1", 3456
+            return "127.0.0.1", 3456, None
 
         def fake_start_engines(self, port_cursors=None):
             self.all_engines = [object() for _ in self.all_engines]
@@ -210,7 +211,7 @@ class TestZeroGpuRolloutConfig:
         assert ray_get_calls == []
 
     def test_start_rollout_servers_waits_for_epd_encoder_before_non_encoder(self, monkeypatch):
-        from vime.backends.vllm_utils.vllm_config import ModelConfig, ServerGroupConfig, vLLMConfig
+        from vime.backends.vllm_utils.vllm_config import ModelConfig, ServerGroupConfig, VllmConfig
         from vime.ray import rollout as rollout_module
 
         class FakeRemoteMethod:
@@ -227,10 +228,10 @@ class TestZeroGpuRolloutConfig:
         def fake_start_router(args, *, has_pd_disaggregation=False, force_new=False):
             assert has_pd_disaggregation is False
             assert force_new is False
-            return "127.0.0.1", 3456
+            return "127.0.0.1", 3456, None
 
         def fake_resolve_vllm_config(args):
-            return vLLMConfig(
+            return VllmConfig(
                 models=[
                     ModelConfig(
                         name="default",

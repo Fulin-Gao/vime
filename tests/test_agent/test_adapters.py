@@ -187,8 +187,8 @@ def test_anthropic_messages_nonstream_records_token_segments():
         assert resp.status == 200
         assert data["type"] == "message" and data["stop_reason"] == "end_turn"
         assert data["content"] == [{"type": "text", "text": "done now"}]
-        # adapter posted the rendered prompt ids and capped max_new_tokens at max_tokens.
-        assert vllm.requests[0]["sampling_params"]["max_new_tokens"] == 7
+        # adapter posted the rendered prompt ids and capped max_tokens at the request cap.
+        assert vllm.requests[0]["sampling_params"]["max_tokens"] == 7
         assert vllm.routing_keys == ["sid-a"]
         # one trained turn: the two response ids carry loss=1 + real logprobs.
         assert len(samples) == 1
@@ -224,7 +224,7 @@ def test_openai_chat_completions_nonstream_records_token_segments():
         assert data["object"] == "chat.completion"
         assert data["choices"][0]["message"] == {"role": "assistant", "content": "hello"}
         assert data["choices"][0]["finish_reason"] == "stop"
-        assert vllm.requests[0]["sampling_params"]["max_new_tokens"] == 4
+        assert vllm.requests[0]["sampling_params"]["max_tokens"] == 4
         assert len(samples) == 1 and samples[0].tokens[-1] == 201 and samples[0].loss_mask[-1] == 1
 
     asyncio.run(run_case())
@@ -363,7 +363,7 @@ def test_anthropic_multiturn_wire_roundtrip_and_token_capture():
         assert tool_use["name"] == "lookup" and tool_use["input"] == {"query": "vime"}
         # both turns routed to the same sid; the adapter posted the growing prompt.
         assert vllm.routing_keys == ["sid-mt", "sid-mt"]
-        assert vllm.requests[1]["input_ids"][: len(vllm.requests[0]["input_ids"])] == vllm.requests[0]["input_ids"]
+        assert vllm.requests[1]["token_ids"][: len(vllm.requests[0]["token_ids"])] == vllm.requests[0]["token_ids"]
         # finish_session produces at least one aligned, partly-trained sample.
         assert samples
         for s in samples:
@@ -422,7 +422,13 @@ def test_mid_list_system_folds_into_user():
 
 
 def test_parse_model_output_plain_text_no_parsers():
-    parsed = parse_model_output("just text", tools_schema=None, tool_parser_name=None, reasoning_parser_name=None)
+    parsed = parse_model_output(
+        "just text",
+        tokenizer=FakeTokenizer(),
+        tools_schema=None,
+        tool_parser_name=None,
+        reasoning_parser_name=None,
+    )
     assert parsed.text == "just text"
     assert parsed.tool_uses == []
     assert parsed.reasoning == ""
@@ -434,6 +440,7 @@ def test_parse_model_output_think_split_fallback():
     pytest.importorskip("vllm")
     parsed = parse_model_output(
         "<think>reason here</think>visible",
+        tokenizer=FakeTokenizer(),
         tools_schema=None,
         tool_parser_name=None,
         reasoning_parser_name="qwen3",

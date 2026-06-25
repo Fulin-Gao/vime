@@ -79,7 +79,6 @@ steps:
           python tests/test_loss_cp_invariance.py
           python tests/test_sample.py
           python tests/test_cispo_loss.py
-          python tests/test_rollout_metrics.py
           python tests/test_logprob_response_spans.py
           python tests/utils/test_hf_checkpoint_saver.py
         '

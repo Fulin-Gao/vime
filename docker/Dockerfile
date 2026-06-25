@@ -64,7 +64,8 @@ RUN git clone https://github.com/NVIDIA/Megatron-LM.git --recursive && \
     cd Megatron-LM && git checkout ${MEGATRON_COMMIT}
 
 # torch_memory_saver pinned to a193d9dd (upstream slime #1916).
-RUN pip install git+https://github.com/fzyzcjy/torch_memory_saver.git@a193d9dd1b877d33c64a41cfb3db9f867df2d926 --no-cache-dir --force-reinstall
+# TMS_CUDA_MAJOR is required by this pin's build backend for CUDA wheels; base is cu129 -> 12.
+RUN TMS_CUDA_MAJOR=12 pip install git+https://github.com/fzyzcjy/torch_memory_saver.git@a193d9dd1b877d33c64a41cfb3db9f867df2d926 --no-cache-dir --force-reinstall
 RUN pip install git+https://github.com/radixark/Megatron-Bridge.git@bridge --no-deps --no-build-isolation
 RUN pip install nvidia-modelopt[torch]>=0.37.0 --no-build-isolation
 

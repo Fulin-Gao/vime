@@ -333,6 +333,7 @@ class BaseAdapter:
             raw_output = tok.decode(turn.output_ids, skip_special_tokens=False) if turn.output_ids else ""
             parsed = parse_model_output(
                 raw_output,
+                tokenizer=tok,
                 tools_schema=tools_schema,
                 tool_parser_name=self.tool_parser,
                 reasoning_parser_name=self.reasoning_parser,
