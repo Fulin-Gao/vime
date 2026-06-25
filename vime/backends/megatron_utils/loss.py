@@ -44,7 +44,13 @@ def get_rollout_top_p_logprob_kwargs(args: Namespace, batch: dict[str, Any]) -> 
     top_p_token_ids = batch.get("rollout_top_p_token_ids")
     top_p_token_offsets = batch.get("rollout_top_p_token_offsets")
     if top_p_token_ids is None or top_p_token_offsets is None:
-        raise ValueError("rollout_top_p != 1.0 requires rollout_top_p_token_ids and rollout_top_p_token_offsets.")
+        # vime divergence (sync #2014..#2125): slime's top-p-replay logprob
+        # restriction needs the inference engine to return the per-step top-p
+        # nucleus token ids. vime's vLLM `/inference/v1/generate` does not expose
+        # them (sglang-only response field), so the data is absent here. Fall
+        # back to full-vocab logprob — vime's pre-sync behavior (this feature did
+        # not exist on main). Flagged in agent_run/reports/OVERNIGHT_REPORT.md.
+        return {}
     return {
         "top_p_token_ids": top_p_token_ids,
         "top_p_token_offsets": top_p_token_offsets,

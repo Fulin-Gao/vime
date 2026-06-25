@@ -76,8 +76,9 @@ RUN pip install --ignore-installed PyJWT && \
 # https://github.com/pytorch/pytorch/issues/168167
 RUN pip install nvidia-cudnn-cu12==9.16.0.29
 
-# reinstall numpy 1.x for megatron
-RUN pip install "numpy<2"
+# reinstall numpy 1.x for megatron; pin scipy<1.14 so it stays numpy-1.x
+# compatible (scipy>=1.14 requires numpy>=2 and drops np.long, breaking import).
+RUN pip install "numpy<2" "scipy<1.14"
 
 RUN pip install IPython
 
