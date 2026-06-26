@@ -107,7 +107,7 @@ WANDB_ARGS=(
 
 VLLM_ARGS=(
    --rollout-num-gpus-per-engine 32
-   --vllm-mem-fraction-static 0.7
+   --vllm-gpu-memory-utilization 0.7
    --vllm-enable-dp-attention
    --vllm-dp-size 4
    --vllm-ep-size 32

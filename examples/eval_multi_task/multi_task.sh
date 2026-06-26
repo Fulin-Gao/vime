@@ -23,19 +23,10 @@ else
 fi
 echo "HAS_NVLINK: $HAS_NVLINK (detected $NVLINK_COUNT NVLink references)"
 
-if command -v nvidia-smi >/dev/null 2>&1; then
-    DETECTED_GPUS=$(nvidia-smi -L 2>/dev/null | wc -l | tr -d ' ')
-else
-    DETECTED_GPUS=0
-fi
-NUM_GPUS=${NUM_GPUS:-${DETECTED_GPUS}}
-if [ -z "$NUM_GPUS" ] || [ "$NUM_GPUS" -le 0 ]; then
-    NUM_GPUS=8
-fi
-echo "NUM_GPUS: $NUM_GPUS"
-
 SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" &>/dev/null && pwd)"
-source "${SCRIPT_DIR}/models/qwen3-4B.sh"
+REPO_ROOT="$(cd -- "${SCRIPT_DIR}/../.." &>/dev/null && pwd)"
+source "${REPO_ROOT}/scripts/models/qwen3-4B.sh"
+EVAL_CONFIG_PATH="${REPO_ROOT}/examples/eval_multi_task/multi_task.yaml"
 
 CKPT_ARGS=(
    --hf-checkpoint /root/Qwen3-4B
@@ -65,10 +56,7 @@ ROLLOUT_ARGS=(
 
 EVAL_ARGS=(
    --eval-interval 20
-   --eval-prompt-data aime /root/aime-2024/aime-2024.jsonl
-   --n-samples-per-eval-prompt 16
-   --eval-max-response-len 16384
-   --eval-top-p 1
+   --eval-config "${EVAL_CONFIG_PATH}"
 )
 
 PERF_ARGS=(
@@ -108,10 +96,10 @@ OPTIMIZER_ARGS=(
 )
 
 WANDB_ARGS=(
-   # --use-wandb
-   # --wandb-project vime-dev
-   # --wandb-group qwen3-4B-test
-   # --wandb-key ${WANDB_KEY}
+   --use-wandb
+   --wandb-project eval
+   --wandb-group multi_task
+   --wandb-key ${WANDB_KEY}
 )
 
 VLLM_ARGS=(
@@ -132,7 +120,7 @@ MISC_ARGS=(
 
 # launch the master node of ray in container
 export MASTER_ADDR=${MASTER_ADDR:-"127.0.0.1"}
-ray start --head --node-ip-address ${MASTER_ADDR} --num-gpus ${NUM_GPUS} --disable-usage-stats --dashboard-host=0.0.0.0 --dashboard-port=8265
+ray start --head --node-ip-address ${MASTER_ADDR} --num-gpus 8 --disable-usage-stats --dashboard-host=0.0.0.0 --dashboard-port=8265
 
 # Build the runtime environment JSON with proper variable substitution
 RUNTIME_ENV_JSON="{
@@ -145,9 +133,9 @@ RUNTIME_ENV_JSON="{
 
 ray job submit --address="http://127.0.0.1:8265" \
    --runtime-env-json="${RUNTIME_ENV_JSON}" \
-   -- python3 train.py \
+   -- python3 "${REPO_ROOT}/train.py" \
    --actor-num-nodes 1 \
-   --actor-num-gpus-per-node ${NUM_GPUS} \
+   --actor-num-gpus-per-node 8 \
    --colocate \
    ${MODEL_ARGS[@]} \
    ${CKPT_ARGS[@]} \

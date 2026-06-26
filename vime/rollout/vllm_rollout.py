@@ -99,9 +99,12 @@ def get_model_url(args: Namespace, model_name: str, endpoint: str = "/inference/
 
 
 class GenerateState(metaclass=SingletonMeta):
-    """The global state for the generation process."""
+    """
+    The global state for the generation process.
+    """
 
     def __init__(self, args: Namespace) -> None:
+        # persistent state for the generation process
         self.args = args
         self.tokenizer = load_tokenizer(args.hf_checkpoint, trust_remote_code=True)
         self.processor = load_processor(args.hf_checkpoint, trust_remote_code=True)
@@ -152,6 +155,7 @@ class GenerateState(metaclass=SingletonMeta):
         for group in samples:
             self.pendings.add(
                 asyncio.create_task(
+                    # submit a group of samples as a single task.
                     generate_and_rm_group(
                         self.args,
                         group,
@@ -379,6 +383,18 @@ async def generate(args: Namespace, sample: Sample, sampling_params: dict[str, A
         meta["prompt_tokens"] = usage.get("prompt_tokens", 0)
         meta["completion_tokens"] = usage.get("completion_tokens", 0)
 
+    # MoE routing replay: vLLM ships routed_experts as a base64 .npy blob on the
+    # OpenAI `choice` (sglang puts a raw int32 array in `meta_info` instead — the
+    # irreducible engine delta). Decode the .npy here, then route it through
+    # `meta_info` so the slime-identical Sample._apply_meta_info does the reshape +
+    # assignment in one place and yields a torch.int32 tensor (matching slime, and
+    # what the megatron routing-replay consumer expects). #183: guard on the value,
+    # since vLLM emits `routed_experts: null` when replay is off.
+    routed_experts = choice.get("routed_experts")
+    if routed_experts is not None:
+        raw = base64.b64decode(routed_experts.encode("ascii"), validate=True)
+        meta["routed_experts"] = np.load(io.BytesIO(raw), allow_pickle=False)
+
     sample.append_response_tokens(
         args,
         tokens=new_response_tokens,
@@ -387,15 +403,6 @@ async def generate(args: Namespace, sample: Sample, sampling_params: dict[str, A
         meta_info=meta,
         text=text,
     )
-
-    if choice.get("routed_experts") is not None:
-        raw = base64.b64decode(choice["routed_experts"].encode("ascii"), validate=True)
-        arr = np.load(io.BytesIO(raw), allow_pickle=False)
-        sample.rollout_routed_experts = np.ascontiguousarray(arr.astype(np.int32, copy=True)).reshape(
-            len(sample.tokens) - 1,
-            args.num_layers,
-            args.moe_router_topk,
-        )
 
     return sample
 
@@ -545,6 +552,7 @@ async def abort(args: Namespace, rollout_id: int) -> list[list[Sample]]:
         if not args.partial_rollout:
             continue
 
+        # for partial rollout, collect the partial samples into the data buffer
         for task in done:
             group = task.result()
             for sample in group:
@@ -752,9 +760,11 @@ async def eval_rollout_single_dataset(
         base_sampling_params["repetition_penalty"] = dataset_cfg.repetition_penalty
 
     tasks = []
+    # do multiple samples for eval prompts
     sample_index = 0
     for _i, prompt_sample in enumerate(dataset.samples):
         for j in range(dataset_cfg.n_samples_per_eval_prompt):
+            # use the same prompt for multiple samples
             sample = copy.deepcopy(prompt_sample)
             sample.index = sample_index
             sample_index += 1

@@ -58,7 +58,7 @@ vllm:
 | `worker_type` | `str` | **必填** | 引擎类型：`regular`（标准）、`prefill`（PD prefill worker）、`decode`（PD decode worker）或 `placeholder`（占位，不启动引擎）。 |
 | `num_gpus` | `int` | **必填** | 该组的 GPU 总数。必须 > 0。 |
 | `num_gpus_per_engine` | `int` | 模型的 `num_gpus_per_engine` | TP 大小覆盖。每个引擎实例的 GPU 数量。 |
-| `overrides` | `dict` | `{}` | vLLM `ServerArgs` 字段覆盖。优先级最高，覆盖 `--vllm-*` CLI 参数和模型级默认值。 |
+| `overrides` | `dict` | `{}` | vLLM `EngineArgs` 字段覆盖。优先级最高，覆盖 `--vllm-*` CLI 参数和模型级默认值。 |
 
 ### Worker 类型
 
@@ -125,7 +125,7 @@ python train.py \
 - 为 decode 使用更大的 TP（降低延迟）
 - 独立扩展 prefill 和 decode 的容量
 
-> **注意：** PD 分离使用 vllm-router (vllm-router)，并设置 `pd_disaggregation=True`。
+> **注意：** PD 分离使用 vllm-router，并设置 `pd_disaggregation=True`。
 
 ### 3. 多模型服务
 
@@ -232,9 +232,9 @@ vllm:
         num_gpus: 2                   # 预留 2 个 GPU（不创建引擎）
 ```
 
-### 6. 按组覆盖 ServerArgs
+### 6. 按组覆盖 EngineArgs
 
-使用 `overrides` 将 vLLM `ServerArgs` 字段应用到特定服务器组，而不影响其他组：
+使用 `overrides` 将 vLLM `EngineArgs` 字段应用到特定服务器组，而不影响其他组：
 
 ```yaml
 vllm:

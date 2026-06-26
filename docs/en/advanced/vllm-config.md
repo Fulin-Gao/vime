@@ -232,9 +232,9 @@ vllm:
         num_gpus: 2                   # reserve 2 GPUs (no engines created)
 ```
 
-### 6. Per-Group ServerArgs Overrides
+### 6. Per-Group EngineArgs Overrides
 
-Use `overrides` to apply vLLM `ServerArgs` fields to specific server groups without affecting others:
+Use `overrides` to apply vLLM `EngineArgs` fields to specific server groups without affecting others:
 
 ```yaml
 vllm:
@@ -453,7 +453,7 @@ Use `get_model_url(args, "model_name", "/endpoint")` from `vime.rollout.vllm_rol
 
 ### Q: Can I use `--vllm-config` without training (inference only)?
 
-While `--vllm-config` is designed for vime's training loop, you can effectively use it for inference-only scenarios by configuring a rollout-only run. For fully standalone vLLM serving, consider using vLLM's native `vllm serve` directly or the `--rollout-external` mode for connecting to pre-deployed engines.
+While `--vllm-config` is designed for vime's training loop, you can effectively use it for inference-only scenarios by configuring a rollout-only run. For fully standalone vLLM serving, consider using vLLM's native `vllm serve` directly or `--rollout-external-engine-addrs` for connecting to pre-deployed engines.
 
 ### Q: What is the relationship between `--vllm-config` and `--prefill-num-servers`?
 

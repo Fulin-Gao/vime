@@ -15,7 +15,7 @@ WORKDIR /root/
 # vllm/vllm-openai base is an inference image — add cu12 dev headers + cmake/git
 # so TE / apex / flash-attn source builds find cusparse.h etc.
 RUN apt-get update && apt-get install -y \
-    nvtop rsync dnsutils git cmake \
+    nvtop rsync dnsutils prometheus git cmake \
     cuda-nvrtc-dev-12-9 cuda-nvml-dev-12-9 cuda-profiler-api-12-9 cuda-nvtx-12-9 \
     libcusparse-dev-12-9 libcusolver-dev-12-9 libcufft-dev-12-9 libcurand-dev-12-9 \
     libcudnn9-dev-cuda-12 && \
@@ -42,12 +42,8 @@ RUN git clone https://github.com/Dao-AILab/flash-attention.git && \
 RUN pip install git+https://github.com/ISEEKYAN/mbridge.git@89eb10887887bc74853f89a4de258c0702932a1c --no-deps
 
 RUN pip install flash-linear-attention==0.4.1
-ARG INSTALL_FLASHQLA=0
-RUN if [ "${INSTALL_FLASHQLA}" = "1" ]; then \
-      pip install git+https://github.com/QwenLM/FlashQLA.git --no-build-isolation; \
-    else \
-      echo "Skipping FlashQLA (INSTALL_FLASHQLA=0; sm90/Hopper-only — use --qwen-gdn-backend fla)"; \
-    fi
+# FlashQLA: optional GDN backend for Qwen3.5/Qwen3-Next (--qwen-gdn-backend flashqla; requires SM90+)
+RUN pip install git+https://github.com/QwenLM/FlashQLA.git --no-build-isolation
 RUN pip install tilelang -f https://tile-ai.github.io/whl/nightly/cu128/
 
 # cublas dev header for TE CMake (arm64 base ships runtime .so but not the header).
@@ -80,18 +76,10 @@ RUN pip install nvidia-cudnn-cu12==9.16.0.29
 # compatible (scipy>=1.14 requires numpy>=2 and drops np.long, breaking import).
 RUN pip install "numpy<2" "scipy<1.14"
 
-RUN pip install IPython
-
-# Pin vllm-router explicitly so the vllm rollout routing layer is a visible build step
-# (also in requirements.txt; pulling it here makes the layer cache-able and fail-fast).
-RUN pip install "vllm-router>=0.1.14"
-
-RUN rm -rf /root/.cache/pip
+RUN rm -rf /root/.cache/pip /root/flash-attention
 
 # ====================================== Patches ============================================
 
-# Patch megatron BEFORE pip install -e . so any patch hunks that touch setup.py
-# or C++/CUDA extensions are picked up by the build.
 COPY docker/patch/${PATCH_VERSION}/megatron.patch /root/Megatron-LM/
 RUN cd Megatron-LM && \
     git update-index --refresh && \
@@ -125,21 +113,9 @@ RUN git clone https://github.com/vllm-project/vime.git /root/vime && \
 RUN cd /root/vime/vime/backends/megatron_utils/kernels/int4_qat && \
     pip install . --no-build-isolation
 
-# ====================================== Build-time smoke ============================================
-
-# Fail-fast import smoke + flashinfer version pin check. Catches ABI / version
-# regressions at build time instead of first GPU run.
-RUN python3 -c "\
-import vllm, vime, flashinfer; \
-from vime.backends.vllm_utils.vllm_engine import VLLMEngine; \
-print('vllm', vllm.__version__); \
-print('flashinfer', flashinfer.__version__); \
-print('VLLMEngine import ok')"
-
-# Megatron stream serialization. vllm rollout + megatron actor co-located on
-# the same GPU need this; default value causes stream-level contention.
-ENV CUDA_DEVICE_MAX_CONNECTIONS=1
-
-# Reset ENTRYPOINT inherited from vllm/vllm-openai base (`vllm serve`).
+# Reset ENTRYPOINT inherited from the vllm/vllm-openai base (`vllm serve`), so the
+# image is a plain bash/ray environment. Without this, `docker run ... bash -c ...`
+# and `ray job submit` append to `vllm serve` and break. Base-image-coupled: slime's
+# base has no such entrypoint, so slime's Dockerfile doesn't need this.
 ENTRYPOINT []
 CMD ["/bin/bash"]

@@ -146,7 +146,9 @@ def _patch_generate(monkeypatch, tokenizer: FakeTokenizer, sandbox_factory) -> N
     monkeypatch.setattr(swe, "E2BSandbox", sandbox_factory)  # eval sandbox
     monkeypatch.setattr(ClaudeCodeHarness, "install_cli", _noop_install)
     monkeypatch.setattr(harness_common.asyncio, "sleep", _fast_sleep)
-    monkeypatch.setattr(adapters_common, "call_vllm_generate", fake_call_vllm_generate(_two_turn_script(), tokenizer))
+    monkeypatch.setattr(
+        adapters_common, "call_vllm_generate", fake_call_vllm_generate(_two_turn_script(), tokenizer)
+    )
     # _AdapterService is a SingletonMeta singleton; drop any cached instance so
     # each test builds a fresh adapter + app thread.
     SingletonMeta.clear_instances(gen._AdapterService)
@@ -257,7 +259,9 @@ def test_codex_openai_rollout_closes_loop(monkeypatch):
 
     async def run_case():
         tok = FakeTokenizer()
-        monkeypatch.setattr(adapters_common, "call_vllm_generate", fake_call_vllm_generate(_two_turn_script(), tok))
+        monkeypatch.setattr(
+            adapters_common, "call_vllm_generate", fake_call_vllm_generate(_two_turn_script(), tok)
+        )
         monkeypatch.setattr(harness_common.asyncio, "sleep", _fast_sleep)
 
         adapter = OpenAIAdapter(tokenizer=tok, vllm_url="http://unused")

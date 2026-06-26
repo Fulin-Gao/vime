@@ -172,7 +172,6 @@ OPTIMIZER_ARGS=(
    --use-precision-aware-optimizer
 )
 
-# ============ rollout engine ============
 VLLM_ARGS=(
    --rollout-num-gpus 64
    --rollout-num-gpus-per-engine ${ROLLOUT_TP_SIZE}
@@ -181,8 +180,6 @@ VLLM_ARGS=(
    --vllm-enable-expert-parallel
    --vllm-tool-call-parser qwen3_coder
    --vllm-reasoning-parser qwen3
-   --vllm-speculative-config '{"method":"mtp","num_speculative_tokens":3}'
-   --prefill-num-servers 1
 )
 
 MISC_ARGS=(

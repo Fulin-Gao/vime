@@ -643,6 +643,28 @@ def _compute_server_args(
 
 
 def _vllm_server_field_names() -> frozenset[str]:
+    """The set of valid vLLM server-arg field names = ``AsyncEngineArgs`` ∪ ``FrontendArgs``.
+
+    This is the single source of truth for "what is a vLLM server arg" in vime,
+    used in two places:
+      * ``--vllm-*`` CLI flags are auto-generated from these dataclasses (so vime
+        never hand-writes ``add_argument`` per flag); and
+      * per-server-group ``overrides`` (from ``--vllm-config`` YAML) are validated
+        and applied against this set in ``_compute_server_args``.
+
+    Why a *union* of two classes (the slime→vime mapping):
+      slime targets sglang, whose entire engine+server configuration lives in one
+      ``ServerArgs`` dataclass, so slime docs/code say "ServerArgs". vLLM has no
+      ``ServerArgs`` class; it splits the surface into ``AsyncEngineArgs`` (engine:
+      model, tensor_parallel_size, gpu_memory_utilization, max_model_len, ...) and
+      ``FrontendArgs`` (the OpenAI HTTP server: host/port, api-key, ...). The faithful
+      translation of sglang ``ServerArgs`` is therefore the union of both. Any agent
+      that sees "ServerArgs" in a slime diff should map it here, not invent a class.
+
+    Field names are underscore-style (dataclass attrs); YAML ``overrides`` keys in
+    dash-style are normalized to underscores before lookup (see the override loop in
+    ``_compute_server_args``).
+    """
     from vllm.engine.arg_utils import AsyncEngineArgs
     from vllm.entrypoints.openai.cli_args import FrontendArgs
 

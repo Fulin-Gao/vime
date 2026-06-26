@@ -162,7 +162,7 @@ CFG
 
 VLLM_ARGS=(
    --rollout-num-gpus-per-engine 64
-   --vllm-mem-fraction-static 0.70
+   --vllm-gpu-memory-utilization 0.70
 
    --vllm-enable-dp-attention
    --vllm-ep-size 64

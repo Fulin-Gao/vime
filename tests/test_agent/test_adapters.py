@@ -25,7 +25,7 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
-from tests.test_agent._fakes import FakeTokenizer, FakeVLLMServer  # noqa: E402
+from tests.test_agent._fakes import FakeVLLMServer, FakeTokenizer  # noqa: E402
 
 from vime.agent.adapters import anthropic, openai  # noqa: E402
 from vime.agent.parsing import parse_model_output, parse_xml_tool_uses  # noqa: E402
@@ -422,13 +422,7 @@ def test_mid_list_system_folds_into_user():
 
 
 def test_parse_model_output_plain_text_no_parsers():
-    parsed = parse_model_output(
-        "just text",
-        tokenizer=FakeTokenizer(),
-        tools_schema=None,
-        tool_parser_name=None,
-        reasoning_parser_name=None,
-    )
+    parsed = parse_model_output("just text", tools_schema=None, tool_parser_name=None, reasoning_parser_name=None)
     assert parsed.text == "just text"
     assert parsed.tool_uses == []
     assert parsed.reasoning == ""
@@ -440,7 +434,6 @@ def test_parse_model_output_think_split_fallback():
     pytest.importorskip("vllm")
     parsed = parse_model_output(
         "<think>reason here</think>visible",
-        tokenizer=FakeTokenizer(),
         tools_schema=None,
         tool_parser_name=None,
         reasoning_parser_name="qwen3",

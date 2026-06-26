@@ -1123,6 +1123,15 @@ def get_vime_extra_args_provider(add_custom_arguments=None):
             parser.add_argument(
                 "--opd-teacher-ckpt-step", type=int, default=None, help="The checkpoint step for OPD teacher model."
             )
+            # vime-only, no slime counterpart — engine-driven divergence, NOT a sync gap.
+            # vime scores the OPD-over-vLLM teacher through vLLM's OpenAI-style endpoints
+            # (/inference/v1/generate and, for multimodal, /v1/chat/completions/render),
+            # whose request bodies carry a `model` field. slime's sglang `/generate`
+            # protocol has no such field (one server serves exactly one model), so there
+            # is nothing upstream to translate this arg from. It is optional by design:
+            # vime.rollout.on_policy_distillation omits the field entirely when this is
+            # unset, so a single-model teacher server just uses its loaded model. Only set
+            # it to target a specific served-model name on a named/multi-model teacher.
             parser.add_argument(
                 "--opd-teacher-model",
                 type=str,
@@ -1552,13 +1561,14 @@ def parse_args(add_custom_arguments=None):
     skip_vllm = pre.debug_train_only or pre.load_debug_rollout_data is not None
 
     # Phase 1: Parse vllm args independently (separate parser, parse_known_args).
+    # Skipped when vllm servers are not needed.
     vllm_ns = None
     if not skip_vllm:
         vllm_ns = vllm_parse_args()
 
     # Phase 2: Parse megatron + vime args.
-    # Uses ignore_unknown_args=True so that --vllm-* and pre-parsed CLI flags are
-    # silently ignored by the megatron parser.
+    # Uses ignore_unknown_args=True so that --vllm-* and pre-parsed CLI flags
+    # are silently ignored by the megatron parser.
     from vime.backends.megatron_utils.arguments import megatron_parse_args
     from vime.backends.megatron_utils.arguments import validate_args as megatron_validate_args
 
@@ -1944,24 +1954,12 @@ def vime_validate_args(args):
             args.offload_train = True
         if args.offload_rollout is None:
             args.offload_rollout = True
-        # In colocate mode the rollout engines share the actor's physical nodes, so the
-        # GPUs-per-physical-node equals actor_num_gpus_per_node. --num-gpus-per-node defaults
-        # to 8 (an 8-GPU/node assumption); on hardware with a different per-node count (e.g.
-        # 4x GB200/node) that default is wrong for MULTI-NODE colocate: the rollout-engine
-        # addr/port allocation computes node_index via num_gpus_per_node and maps every engine
-        # to node 0, so worker-node engines are handed the head node's IP and fail to bind
-        # (OSError: [Errno 99] Cannot assign requested address). Derive the real per-node count.
         if args.num_gpus_per_node != args.actor_num_gpus_per_node:
             logger.info(
                 f"colocate: overriding num_gpus_per_node {args.num_gpus_per_node} -> "
                 f"actor_num_gpus_per_node {args.actor_num_gpus_per_node} (per-physical-node GPU count)."
             )
             args.num_gpus_per_node = args.actor_num_gpus_per_node
-        # vime keeps its UNCONDITIONAL re-derive (force rollout to all colocate GPUs on any
-        # mismatch, incl. None) — the num_gpus_per_node override above depends on it. The
-        # merge had wrongly swapped this for slime's `is None`-only form, leaving rollout
-        # mis-sized when a non-None value mismatched -> colocate IPC/memory breakage. The
-        # `== 0` branch is slime's #2016 addition (no local engines), checked first.
         if args.rollout_num_gpus == 0:
             logger.info("rollout_num_gpus is 0 under colocate; no local vLLM engines will be launched.")
         elif args.rollout_num_gpus != args.actor_num_gpus_per_node * args.actor_num_nodes:

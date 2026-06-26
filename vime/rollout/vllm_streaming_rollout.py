@@ -73,18 +73,18 @@ def _base_dataset_prompt_ids(sample: Sample, tokenizer, processor: Any) -> list[
 async def generate_streaming(args: Namespace, sample: Sample, sampling_params: dict[str, Any]) -> Sample:
     """Streaming counterpart to :func:`vime.rollout.vllm_rollout.generate`.
 
-    Writes the accumulated state from each SSE chunk onto ``sample`` so an abort
-    that cuts the stream still leaves a coherent partial sample behind.
+    Writes the cumulative state from each SSE chunk onto ``sample`` so an
+    abort that cuts the stream still leaves a coherent partial sample behind.
     """
     if args.ci_test:
         assert isinstance(sample.prompt, str)
 
     state = GenerateState(args)
-    base = f"http://{args.vllm_router_ip}:{args.vllm_router_port}"
-    url = f"{base}/inference/v1/generate"
+    url = f"http://{args.vllm_router_ip}:{args.vllm_router_port}/generate"
 
-    assert (
-        sample.status == Sample.Status.PENDING or sample.status == Sample.Status.ABORTED
+    assert sample.status in (
+        Sample.Status.PENDING,
+        Sample.Status.ABORTED,
     ), f"Sample status is {sample.status}"
 
     prompt_ids = _prepare_prompt_ids(sample, state.tokenizer, state.processor)
@@ -272,22 +272,20 @@ async def generate_streaming(args: Namespace, sample: Sample, sampling_params: d
                 [float(lp), int(tid)] for lp, tid in zip(new_response_log_probs, new_response_tokens, strict=True)
             ]
 
+        # MoE routing replay (when requested) ships on the terminal choice as a base64
+        # .npy blob. Decode it into meta_info so the slime-identical
+        # Sample._apply_meta_info does the reshape + assignment (one place, torch int32
+        # tensor — matching slime + the megatron routing-replay consumer). Guard on the
+        # value (not just key presence): vLLM emits ``routed_experts: null`` when replay
+        # is off (vllm_rollout.generate's #183 fix).
+        if last_choice.get("routed_experts") is not None:
+            raw = base64.b64decode(last_choice["routed_experts"].encode("ascii"), validate=True)
+            meta["routed_experts"] = np.load(io.BytesIO(raw), allow_pickle=False)
         # #2110 renamed update_from_meta_info -> append_response_tokens. The streaming
         # path already accumulates tokens/log_probs above (partial-rollout abort needs
         # incremental state), so finalize metadata only: tokens omitted -> no re-append,
-        # _apply_meta_info still runs for finish_reason/usage/terminal info.
+        # _apply_meta_info still runs for finish_reason/usage/terminal info + routing replay.
         sample.append_response_tokens(args, meta_info=meta)
-        # MoE routing replay (when requested) ships on the terminal choice. Guard the
-        # value (not just key presence): vLLM includes ``routed_experts: null`` when
-        # replay is off, matching vllm_rollout.generate's #183 fix.
-        if last_choice.get("routed_experts") is not None:
-            raw = base64.b64decode(last_choice["routed_experts"].encode("ascii"), validate=True)
-            arr = np.load(io.BytesIO(raw), allow_pickle=False)
-            sample.rollout_routed_experts = np.ascontiguousarray(arr.astype(np.int32, copy=True)).reshape(
-                len(sample.tokens) - 1,
-                args.num_layers,
-                args.moe_router_topk,
-            )
     elif state.aborted:
         sample.status = Sample.Status.ABORTED
 

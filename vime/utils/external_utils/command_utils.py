@@ -108,15 +108,17 @@ def execute_train(
     master_addr = os.environ.get("MASTER_ADDR", "127.0.0.1")
 
     exec_command(
-        # vLLM renames its subprocesses (VLLM::EngineCore / Worker_TP*), so match
-        # the renamed children too; the [v]/[M] brackets avoid matching pkill itself.
         "pkill -9 vllm; "
         "sleep 3; "
         f"{'' if external_ray else 'ray stop --force; '}"
         f"{'' if external_ray else 'pkill -9 ray; '}"
+        # cannot be run in CI, o/w kill the parent script
+        # TODO: do we really need this kill? (or can we instead kill vime)
+        # "pkill -9 python; "
         "pkill -9 vime; "
         "sleep 3; "
         f"{'' if external_ray else 'pkill -9 ray; '}"
+        # "pkill -9 python; "
         "pkill -9 vime; "
         "pkill -9 redis; "
         "true; "

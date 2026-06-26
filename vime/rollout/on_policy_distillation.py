@@ -16,6 +16,11 @@ def _teacher_base_url(rm_url: str) -> str:
 
 
 async def reward_func(args, sample, **kwargs):
+    # `opd_teacher_model` -> the `model` field of vLLM's OpenAI-style teacher
+    # requests. None is the normal case (single-model teacher server): we omit
+    # `model` everywhere below and the server uses its one loaded model. This is
+    # the vime-only divergence from slime's sglang OPD path, which has no `model`
+    # field at all — see --opd-teacher-model in vime/utils/arguments.py.
     teacher_model = getattr(args, "opd_teacher_model", None)
     sampling_params = {
         "max_tokens": 1,
