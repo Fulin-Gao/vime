@@ -81,7 +81,7 @@ async def generate_streaming(args: Namespace, sample: Sample, sampling_params: d
 
     state = GenerateState(args)
     base = f"http://{args.vllm_router_ip}:{args.vllm_router_port}"
-    url = f"{base}/generate"
+    url = f"{base}/inference/v1/generate"
 
     assert sample.status in (
         Sample.Status.PENDING,
