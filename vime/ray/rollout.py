@@ -1118,6 +1118,16 @@ def start_rollout_servers(args, pg) -> tuple[dict[str, Any], list[Any]]:
     pending_init_handles: list[Any] = []
     gpu_offset = 0
     engine_offset = 0
+    # Per-node next-free-port cursor, threaded across ALL models (not reset per
+    # model). Engine init is deferred (handles returned in pending_init_handles
+    # and awaited by the caller), so a later model's engines allocate ports while
+    # earlier models' APIServers are not yet bound — the free-port bind-test in
+    # _allocate_rollout_engine_addr_and_ports_normal would then hand out ports an
+    # earlier model already reserved (e.g. multi-model --vllm-config actor+ref both
+    # landing on 15000-15003), and the cross-talk surfaces as a vLLM 500
+    # "start_weight_update must be called before update_weights". A monotonic
+    # global cursor keeps every engine's ports disjoint regardless of bind timing.
+    port_cursors: dict[int, int] = {}
 
     # Compute megatron GPU range for per-group offload decisions.
     rollout_pg_offset = _compute_rollout_offset(args)
@@ -1146,7 +1156,6 @@ def start_rollout_servers(args, pg) -> tuple[dict[str, Any], list[Any]]:
             args.vllm_router_port = router_port
 
         server_groups: list[ServerGroup] = []
-        port_cursors: dict[int, int] = {}
 
         has_epd = model_cfg.has_encoder_disaggregation
 
