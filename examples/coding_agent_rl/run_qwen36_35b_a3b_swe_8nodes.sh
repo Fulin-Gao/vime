@@ -5,7 +5,7 @@
 # processes cleaned up with it).
 
 # Best-effort cleanup so a rerun does not collide with stale workers.
-pkill -9 vllm || true
+pkill -9 -f '[v]llm serve|VLL[M]::' || true
 sleep 3
 ray stop --force || true
 pkill -9 ray || true
@@ -248,7 +248,7 @@ if [[ -f "${HOSTFILE}" ]]; then
     [[ "${WORKER_IP}" == "${MASTER_ADDR}" ]] && continue
     echo "Starting Ray worker on ${WORKER_IP}"
     ssh -o StrictHostKeyChecking=no "root@${WORKER_IP}" \
-      "pkill -9 vllm ; ray stop --force ; pkill -9 python ; \
+      "pkill -9 -f '[v]llm serve|VLL[M]::' ; ray stop --force ; pkill -9 python ; \
        ray start --address=${MASTER_ADDR}:6379 --num-gpus ${ACTOR_NUM_GPUS_PER_NODE} \
          --node-ip-address ${WORKER_IP} --disable-usage-stats" &
   done

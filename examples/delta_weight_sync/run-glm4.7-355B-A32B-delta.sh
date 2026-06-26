@@ -4,7 +4,7 @@
 # 8 actor nodes (TP=8, PP=4, EP=16) + 64 rollout GPUs (8 H100 nodes worth), 16 nodes total.
 # Disk transport is active by default; the NCCL block below it is commented out.
 
-pkill -9 vllm
+pkill -9 -f '[v]llm serve|VLL[M]::'
 sleep 3
 ray stop --force
 pkill -9 ray
