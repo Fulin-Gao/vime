@@ -25,7 +25,7 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
-from tests.test_agent._fakes import FakeVLLMServer, FakeTokenizer  # noqa: E402
+from tests.test_agent._fakes import FakeTokenizer, FakeVLLMServer  # noqa: E402
 
 from vime.agent.adapters import anthropic, openai  # noqa: E402
 from vime.agent.parsing import parse_model_output, parse_xml_tool_uses  # noqa: E402
