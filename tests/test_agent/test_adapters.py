@@ -422,7 +422,11 @@ def test_mid_list_system_folds_into_user():
 
 
 def test_parse_model_output_plain_text_no_parsers():
-    parsed = parse_model_output("just text", tools_schema=None, tool_parser_name=None, reasoning_parser_name=None)
+    # tokenizer is only used on the parser paths (#198 made it required for vLLM
+    # parsers); the no-parser passthrough never touches it, so None is fine here.
+    parsed = parse_model_output(
+        "just text", tokenizer=None, tools_schema=None, tool_parser_name=None, reasoning_parser_name=None
+    )
     assert parsed.text == "just text"
     assert parsed.tool_uses == []
     assert parsed.reasoning == ""

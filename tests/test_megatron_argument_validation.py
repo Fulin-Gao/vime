@@ -322,7 +322,15 @@ def test_vime_validate_args_preserves_zero_rollout_gpus_under_colocate(monkeypat
 
 
 @pytest.mark.unit
-def test_vime_validate_args_preserves_larger_rollout_gpus_under_colocate(monkeypatch):
+def test_vime_validate_args_rederives_mismatched_rollout_gpus_under_colocate(monkeypatch):
+    # vime divergence from slime: under --colocate, vime couples num_gpus_per_node to
+    # actor_num_gpus_per_node and unconditionally re-derives rollout_num_gpus to
+    # actor_num_gpus_per_node * actor_num_nodes (train and rollout share the same GPUs,
+    # so rollout cannot exceed the colocated set). A mismatched value (here a larger 12)
+    # is forced down to 8, not preserved. slime has no such coupling and preserves the
+    # value — its test (test_slime_validate_args_preserves_larger_rollout_gpus_under_colocate,
+    # asserts == 12) must NOT be ported verbatim. See arguments.vime_validate_args colocate
+    # block + commit "restore vime unconditional colocate rollout_num_gpus re-derive".
     module = load_vime_arguments_module(monkeypatch)
     args = make_vime_validate_args(
         colocate=True,
@@ -333,7 +341,7 @@ def test_vime_validate_args_preserves_larger_rollout_gpus_under_colocate(monkeyp
 
     module.vime_validate_args(args)
 
-    assert args.rollout_num_gpus == 12
+    assert args.rollout_num_gpus == 8  # re-derived from actor_num_gpus_per_node * actor_num_nodes
     assert args.offload_train is True
     assert args.offload_rollout is True
 
