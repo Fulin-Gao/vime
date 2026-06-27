@@ -27,7 +27,7 @@ logger = logging.getLogger(__name__)
 
 @dataclasses.dataclass(frozen=True)
 class TurnRecord:
-    """One vllm ``/generate`` snapshot: the contract between an adapter and the
+    """One vllm ``/inference/v1/generate`` snapshot: the contract between an adapter and the
     manager. Adapters build it from a turn's prompt/output token ids; ``record_turn``
     consumes it."""
 

@@ -2,7 +2,7 @@
 
 This walks a real agent rollout end to end on CPU. Only four external edges are
 faked (see ``tests/test_agent/_fakes.py``): the tokenizer, the E2B sandbox, the
-vllm ``/generate`` server, and the agent CLI process inside the sandbox.
+vllm ``/inference/v1/generate`` server, and the agent CLI process inside the sandbox.
 Everything between -- ``generate.generate`` orchestration, the in-thread adapter
 HTTP app, wire translation, ``record_turn`` / tree building, ``finish_session``
 linearization, ``swe`` workspace-prep / diff / eval, the harness lifecycle and

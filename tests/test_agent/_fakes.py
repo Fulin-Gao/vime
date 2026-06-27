@@ -11,7 +11,7 @@ checkpoint required. The code under test stays real; only these edges are faked:
                                   encode->generate->decode->parse round trip.
   * :class:`ScriptedTokenizer` -- pre-baked prompt-id queue + id->text decode,
                                   for adapter unit tests that assert exact ids.
-  * :class:`FakeVLLMServer`  -- a real aiohttp ``/generate`` upstream returning
+  * :class:`FakeVLLMServer`  -- a real aiohttp ``/inference/v1/generate`` upstream returning
                                   scripted ``output_token_logprobs`` per turn
                                   (exercises the real HTTP path in
                                   ``common.call_vllm_generate``).
@@ -133,7 +133,7 @@ class ScriptedTokenizer:
 
 
 # ---------------------------------------------------------------------------
-# vllm /generate fakes
+# vllm /inference/v1/generate fakes
 # ---------------------------------------------------------------------------
 
 
@@ -203,7 +203,7 @@ def fake_call_vllm_generate(scripted: list[tuple[str, str, list[float] | None]],
     queue = list(scripted)
 
     async def _fake(prompt_ids, session, body, *, adapter, session_id=None) -> TurnRecord:
-        assert queue, "unexpected vllm /generate call (response script exhausted)"
+        assert queue, "unexpected vllm /inference/v1/generate call (response script exhausted)"
         text, finish, logprobs = queue.pop(0)
         output_ids = tokenizer.encode(text)
         lp = list(logprobs) if logprobs is not None else [0.0] * len(output_ids)

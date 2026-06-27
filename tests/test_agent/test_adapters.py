@@ -1,7 +1,7 @@
 """Unit tests for the agent HTTP adapters (Anthropic + OpenAI) and parsing.
 
 Every test drives a REAL adapter over a real aiohttp loopback
-(``TestServer``/``TestClient``) and a real ``/generate`` upstream
+(``TestServer``/``TestClient``) and a real ``/inference/v1/generate`` upstream
 (:class:`tests.test_agent._fakes.FakeVLLMServer`) -- so the whole
 translate -> vllm -> parse -> record_turn -> finish_session path runs
 unmocked; only the model server and tokenizer are faked. Covers both wire
@@ -161,7 +161,7 @@ def test_openai_translation_developer_to_system_and_tool_calls_to_dict():
 
 
 # ===========================================================================
-# §3 non-stream JSON + token capture (real HTTP, real /generate)
+# §3 non-stream JSON + token capture (real HTTP, real /inference/v1/generate)
 # ===========================================================================
 
 

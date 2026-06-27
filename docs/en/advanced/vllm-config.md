@@ -174,18 +174,27 @@ from vime.rollout.vllm_rollout import get_model_url
 from vime.utils.http_utils import post
 
 async def my_generate(args, sample, sampling_params):
-    # Route to the actor model (default)
-    actor_url = get_model_url(args, "actor", "/generate")
-    output = await post(actor_url, {"text": sample.prompt, "sampling_params": sampling_params})
-    
+    # Route to the actor model (default endpoint is /inference/v1/generate)
+    actor_url = get_model_url(args, "actor")
+    output = await post(actor_url, {
+        "model": args.hf_checkpoint,
+        "token_ids": sample.tokens,
+        "sampling_params": {"max_tokens": 1024, "temperature": 1.0, "top_p": 1.0, "logprobs": 1},
+    })
+    # output["choices"][0] carries token_ids, logprobs.content[i].logprob, and finish_reason
+
     # Route to the reference model
-    ref_url = get_model_url(args, "ref", "/generate")
-    ref_output = await post(ref_url, {"text": sample.prompt, "sampling_params": sampling_params})
-    
+    ref_url = get_model_url(args, "ref")
+    ref_output = await post(ref_url, {
+        "model": args.hf_checkpoint,
+        "token_ids": sample.tokens,
+        "sampling_params": {"max_tokens": 1024, "temperature": 1.0, "top_p": 1.0, "logprobs": 1},
+    })
+
     # Route to the reward model (e.g., OpenAI-compatible API)
     reward_url = get_model_url(args, "reward", "/v1/chat/completions")
     reward_output = await post(reward_url, {...})
-    
+
     ...
 ```
 
@@ -405,27 +414,29 @@ from vime.utils.http_utils import post
 async def generate_with_models(args, sample, sampling_params):
     """Generate using actor, score with reward model, compare with reference."""
     
-    # Generate from actor
-    actor_url = get_model_url(args, "actor", "/generate")
+    # Generate from actor (default endpoint is /inference/v1/generate)
+    actor_url = get_model_url(args, "actor")
     actor_output = await post(actor_url, {
-        "text": sample.prompt,
-        "sampling_params": sampling_params,
-        "return_logprob": True,
+        "model": args.hf_checkpoint,
+        "token_ids": sample.tokens,
+        "sampling_params": {"max_tokens": 1024, "temperature": 1.0, "top_p": 1.0, "logprobs": 1},
     })
-    
-    # Get reference logprobs for KL penalty
-    ref_url = get_model_url(args, "ref", "/generate")
+    response_ids = actor_output["choices"][0]["token_ids"]
+
+    # Get reference logprobs over the prompt+response. max_tokens=1 + prompt_logprobs scores
+    # the submitted token_ids; read them from the top-level "prompt_logprobs" field.
+    ref_url = get_model_url(args, "ref")
     ref_output = await post(ref_url, {
-        "text": sample.prompt + actor_output["text"],
-        "sampling_params": {"max_new_tokens": 0, "temperature": 0},
-        "return_logprob": True,
+        "model": args.hf_checkpoint,
+        "token_ids": sample.tokens + response_ids,
+        "sampling_params": {"max_tokens": 1, "temperature": 0.0, "prompt_logprobs": 1},
     })
-    
-    # Score with reward model
+
+    # Score with reward model (OpenAI-compatible)
     reward_url = get_model_url(args, "reward", "/v1/chat/completions")
     reward_output = await post(reward_url, {
         "model": "reward",
-        "messages": [{"role": "user", "content": sample.prompt + actor_output["text"]}],
+        "messages": [{"role": "user", "content": sample.prompt}],
     })
     
     # ... process outputs and return Sample

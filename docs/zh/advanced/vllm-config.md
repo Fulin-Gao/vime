@@ -174,18 +174,27 @@ from vime.rollout.vllm_rollout import get_model_url
 from vime.utils.http_utils import post
 
 async def my_generate(args, sample, sampling_params):
-    # 路由到 actor 模型（默认）
-    actor_url = get_model_url(args, "actor", "/generate")
-    output = await post(actor_url, {"text": sample.prompt, "sampling_params": sampling_params})
-    
+    # 路由到 actor 模型（默认端点为 /inference/v1/generate）
+    actor_url = get_model_url(args, "actor")
+    output = await post(actor_url, {
+        "model": args.hf_checkpoint,
+        "token_ids": sample.tokens,
+        "sampling_params": {"max_tokens": 1024, "temperature": 1.0, "top_p": 1.0, "logprobs": 1},
+    })
+    # output["choices"][0] 含 token_ids、logprobs.content[i].logprob 及 finish_reason
+
     # 路由到 reference 模型
-    ref_url = get_model_url(args, "ref", "/generate")
-    ref_output = await post(ref_url, {"text": sample.prompt, "sampling_params": sampling_params})
-    
+    ref_url = get_model_url(args, "ref")
+    ref_output = await post(ref_url, {
+        "model": args.hf_checkpoint,
+        "token_ids": sample.tokens,
+        "sampling_params": {"max_tokens": 1024, "temperature": 1.0, "top_p": 1.0, "logprobs": 1},
+    })
+
     # 路由到 reward 模型（如 OpenAI 兼容 API）
     reward_url = get_model_url(args, "reward", "/v1/chat/completions")
     reward_output = await post(reward_url, {...})
-    
+
     ...
 ```
 
@@ -404,27 +413,29 @@ from vime.utils.http_utils import post
 async def generate_with_models(args, sample, sampling_params):
     """使用 actor 生成，用 reward 模型打分，与 reference 比较。"""
     
-    # 从 actor 生成
-    actor_url = get_model_url(args, "actor", "/generate")
+    # 从 actor 生成（默认端点为 /inference/v1/generate）
+    actor_url = get_model_url(args, "actor")
     actor_output = await post(actor_url, {
-        "text": sample.prompt,
-        "sampling_params": sampling_params,
-        "return_logprob": True,
+        "model": args.hf_checkpoint,
+        "token_ids": sample.tokens,
+        "sampling_params": {"max_tokens": 1024, "temperature": 1.0, "top_p": 1.0, "logprobs": 1},
     })
-    
-    # 获取 reference logprobs 用于 KL penalty
-    ref_url = get_model_url(args, "ref", "/generate")
+    response_ids = actor_output["choices"][0]["token_ids"]
+
+    # 获取 reference logprobs 用于 KL penalty。max_tokens=1 + prompt_logprobs 对提交的
+    # token_ids 打分；从顶层 "prompt_logprobs" 字段读取。
+    ref_url = get_model_url(args, "ref")
     ref_output = await post(ref_url, {
-        "text": sample.prompt + actor_output["text"],
-        "sampling_params": {"max_new_tokens": 0, "temperature": 0},
-        "return_logprob": True,
+        "model": args.hf_checkpoint,
+        "token_ids": sample.tokens + response_ids,
+        "sampling_params": {"max_tokens": 1, "temperature": 0.0, "prompt_logprobs": 1},
     })
-    
-    # 用 reward 模型打分
+
+    # 用 reward 模型打分（OpenAI 兼容）
     reward_url = get_model_url(args, "reward", "/v1/chat/completions")
     reward_output = await post(reward_url, {
         "model": "reward",
-        "messages": [{"role": "user", "content": sample.prompt + actor_output["text"]}],
+        "messages": [{"role": "user", "content": sample.prompt}],
     })
     
     # ... 处理输出并返回 Sample
