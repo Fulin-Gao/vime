@@ -453,7 +453,7 @@ Use `get_model_url(args, "model_name", "/endpoint")` from `vime.rollout.vllm_rol
 
 ### Q: Can I use `--vllm-config` without training (inference only)?
 
-Yes — `--vllm-config` launches the vLLM engines **in-process** from the config (the same in-process launch path used during training, the same as slime), so a rollout-only run serves directly without any separate server process. To instead connect to engines you've deployed yourself, use `--rollout-external-engine-addrs`.
+While `--vllm-config` is designed for vime's training loop, you can effectively use it for inference-only scenarios by configuring a rollout-only run. For fully standalone vLLM serving, consider using vLLM's native `_run_vllm_server` directly or `--rollout-external-engine-addrs` for connecting to pre-deployed engines.
 
 ### Q: What is the relationship between `--vllm-config` and `--prefill-num-servers`?
 
