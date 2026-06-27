@@ -1761,6 +1761,12 @@ def _validate_update_weight_args(args) -> None:
     _resolve_update_weight_disk_dir(args)
 
     if args.update_weight_mode == "delta":
+        # vime divergence: the delta weight-sync path is UNVERIFIED on vime+vLLM. 
+        # Guard it off until a real delta-load run passes; remove this raise once verified.
+        raise NotImplementedError(
+            "--update-weight-mode=delta is unverified on vime+vLLM and is disabled; "
+            "use --update-weight-mode=full."
+        )
         if args.update_weight_transport not in ("nccl", "disk"):
             raise ValueError(
                 "--update-weight-mode=delta supports only --update-weight-transport=nccl or disk, "
