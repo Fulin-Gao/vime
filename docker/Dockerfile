@@ -77,8 +77,13 @@ RUN pip install --ignore-installed PyJWT && \
 # https://github.com/pytorch/pytorch/issues/168167
 RUN pip install nvidia-cudnn-cu12==9.16.0.29
 
-# reinstall numpy 1.x for megatron
-RUN pip install "numpy<2"
+# reinstall numpy 1.x for megatron; pin scipy<1.18 alongside it. vime's vllm/vllm-openai
+# base ships NO scipy, so unpinned it pulls scipy>=1.18, which hard-requires numpy>=2 and
+# uses np.long (removed in numpy>=1.24) -> AttributeError against the numpy<2 above ->
+# `import scipy/transformers` crash. slime's sglang base resolves scipy to 1.17.1 (numpy-1.x
+# compatible) natively, so slime needs no scipy pin -- this is a vime base-image divergence.
+# Real boundary is 1.18 (slime runs 1.17.1 fine), not the earlier 1.14 guess.
+RUN pip install "numpy<2" "scipy<1.18"
 
 RUN rm -rf /root/.cache/pip /root/flash-attention
 
