@@ -361,33 +361,24 @@ def test_vime_validate_args_preserves_zero_rollout_gpus_without_colocate(monkeyp
 
 
 @pytest.mark.unit
-def test_update_weight_delta_rejects_colocate(monkeypatch):
+def test_update_weight_delta_disabled(monkeypatch):
+    # vime divergence: the delta weight-sync path is UNVERIFIED on vime+vLLM and is
+    # hard-guarded off (_validate_update_weight_args raises NotImplementedError at the top
+    # of the delta branch). The downstream colocate / unknown-transport rejections are
+    # therefore unreachable, so any delta config raises regardless of transport/colocate.
+    # When delta is verified and the guard is lifted, restore the per-condition tests
+    # (rejects_colocate / rejects_unknown_transport).
     module = load_vime_arguments_module(monkeypatch)
-    args = types.SimpleNamespace(
-        update_weight_mode="delta",
-        update_weight_transport="nccl",
-        update_weight_disk_dir=None,
-        update_weight_delta_dir=None,
-        colocate=True,
-    )
-
-    with pytest.raises(ValueError, match="not supported with --colocate"):
-        module._validate_update_weight_args(args)
-
-
-@pytest.mark.unit
-def test_update_weight_delta_rejects_unknown_transport(monkeypatch):
-    module = load_vime_arguments_module(monkeypatch)
-    args = types.SimpleNamespace(
-        update_weight_mode="delta",
-        update_weight_transport="tensor",
-        update_weight_disk_dir=None,
-        update_weight_delta_dir=None,
-        colocate=False,
-    )
-
-    with pytest.raises(ValueError, match="supports only --update-weight-transport=nccl or disk"):
-        module._validate_update_weight_args(args)
+    for transport, colocate in (("nccl", False), ("tensor", False), ("nccl", True)):
+        args = types.SimpleNamespace(
+            update_weight_mode="delta",
+            update_weight_transport=transport,
+            update_weight_disk_dir=None,
+            update_weight_delta_dir=None,
+            colocate=colocate,
+        )
+        with pytest.raises(NotImplementedError, match="unverified on vime"):
+            module._validate_update_weight_args(args)
 
 
 if __name__ == "__main__":
