@@ -452,7 +452,7 @@ async def generate_with_models(args, sample, sampling_params):
 
 ### Q: 可以不训练，只用 `--vllm-config` 做推理吗？
 
-虽然 `--vllm-config` 是为 vime 的训练循环设计的，但你可以通过配置仅 rollout 的运行来实现纯推理场景。对于完全独立的 vLLM 推理服务，建议直接使用 vLLM 原生的 `launch_server`，或使用 `--rollout-external-engine-addrs` 连接预部署的引擎。
+可以 —— `--vllm-config` 会根据配置**在进程内（in-process）**启动 vLLM 引擎（与训练时使用的 in-process 启动路径完全相同，和 slime 一致），因此仅 rollout 的运行无需任何独立的 server 进程即可直接提供推理服务。若想改为连接你自己已部署的引擎，使用 `--rollout-external-engine-addrs`。
 
 ### Q: `--vllm-config` 和 `--prefill-num-servers` 是什么关系？
 
