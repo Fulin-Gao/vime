@@ -108,24 +108,15 @@ WANDB_ARGS=(
 VLLM_ARGS=(
    --rollout-num-gpus-per-engine 32
    --vllm-gpu-memory-utilization 0.7
-   --vllm-enable-dp-attention
-   --vllm-dp-size 4
-   --vllm-ep-size 32
-   --vllm-enable-dp-lm-head
-   --vllm-moe-dense-tp-size 1
+   --vllm-data-parallel-size 4        # was --sglang-dp-size 4
+   --vllm-enable-expert-parallel      # was --sglang-ep-size 32 (vLLM derives EP size from DP)
+   # Dropped sglang-only (no vLLM equivalent): enable_dp_attention / enable_dp_lm_head /
+   # moe_dense_tp_size. Dropped sglang engine delta-receiver knobs
+   # (--update-weight-delta-chunk-bytes / -read-workers): vime's delta sync is train-side
+   # (PR #278 / worker-ext), not vLLM engine args.
 
-   # Receiver batches up to this many bytes per model.load_weights call. Bigger
-   # amortizes per-call cost (name resolution, MoE expert remap) but raises peak HBM.
-   --vllm-update-weight-delta-chunk-bytes $((2 * 1024 * 1024 * 1024))
-
-   # Max parallel I/O threads for reading delta files from disk (disk transport only).
-   --vllm-update-weight-delta-read-workers 4
-
-   # mtp
-   --vllm-speculative-algorithm EAGLE
-   --vllm-speculative-num-steps 3
-   --vllm-speculative-eagle-topk 1
-   --vllm-speculative-num-draft-tokens 4
+   # mtp / EAGLE — 4 sglang --speculative-* flags merge into one vLLM JSON (§5.2)
+   --vllm-speculative-config '{"method":"eagle","num_speculative_tokens":4}'
 )
 
 # Delta weight sync. Pick one of the two blocks below.
