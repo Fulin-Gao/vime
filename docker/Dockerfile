@@ -43,7 +43,12 @@ RUN pip install git+https://github.com/ISEEKYAN/mbridge.git@89eb10887887bc74853f
 
 RUN pip install flash-linear-attention==0.4.1
 # FlashQLA: optional GDN backend for Qwen3.5/Qwen3-Next (--qwen-gdn-backend flashqla; requires SM90+)
-RUN pip install git+https://github.com/QwenLM/FlashQLA.git --no-build-isolation
+ARG INSTALL_FLASHQLA=0
+RUN if [ "${INSTALL_FLASHQLA}" = "1" ]; then \
+      pip install git+https://github.com/QwenLM/FlashQLA.git --no-build-isolation; \
+    else \
+      echo "Skipping FlashQLA (INSTALL_FLASHQLA=0; sm90/Hopper-only — use --qwen-gdn-backend fla)"; \
+    fi
 RUN pip install tilelang -f https://tile-ai.github.io/whl/nightly/cu128/
 
 # cublas dev header for TE CMake (arm64 base ships runtime .so but not the header).
