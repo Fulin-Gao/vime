@@ -91,11 +91,6 @@ async def generate_streaming(args: Namespace, sample: Sample, sampling_params: d
     prompt_ids = _prepare_prompt_ids(sample, state.tokenizer, state.processor)
     base_prompt_ids = _base_dataset_prompt_ids(sample, state.tokenizer, state.processor)
 
-    # Multimodal samples use the same render-dance as the non-streaming text
-    # path (/v1/chat/completions/render → features), then stream the generate
-    # call. Streaming only changes how output is returned (SSE deltas vs one
-    # JSON); the image render (input prep) is identical. Built below once
-    # sampling params + token_ids are resolved.
     images = sample.multimodal_inputs.get("images") if sample.multimodal_inputs else None
 
     params = dict(sampling_params)
@@ -114,25 +109,17 @@ async def generate_streaming(args: Namespace, sample: Sample, sampling_params: d
     if not sample.tokens:
         sample.tokens = prompt_ids
 
-    # vLLM ``/inference/v1/generate`` is token-only. On partial continuation,
-    # send the full prompt+response prefix so the engine continues from the
-    # current sample state (mirrors the non-streaming text path).
     if len(sample.response) > 0:
         token_ids = _coerce_flat_int_token_ids(sample.tokens)
     else:
         token_ids = prompt_ids
 
-    # Use session_id for consistent_hash routing (vime convention: x-session-id
-    # header + policy "consistent_hash"). See vllm_rollout.generate.
     headers = None
     if sample.session_id and getattr(args, "router_policy", None) == "consistent_hash":
         headers = {"x-session-id": sample.session_id}
 
     payload: dict[str, Any]
     if images:
-        # Same render-dance as vllm_rollout.generate's MM path, then stream.
-        # mm placeholders live in the (stable) prompt prefix, so re-rendering and
-        # re-aligning to the current token_ids holds across partial continuations.
         content: list[dict[str, Any]] = [{"type": "text", "text": sample.prompt}]
         for image in images:
             content.append({"type": "image_url", "image_url": {"url": encode_image_for_rollout_engine(image)}})
@@ -205,9 +192,7 @@ async def generate_streaming(args: Namespace, sample: Sample, sampling_params: d
                 if choice.get("finish_reason"):
                     finish_reason = choice["finish_reason"]
 
-                # Each streamed choice carries only this chunk's *delta* tokens
-                # (GenerateResponseStreamChoice), so accumulate. Parse token_ids +
-                # logprobs.content inline, the same way the non-streaming generate() does.
+                # Each chunk carries only its delta tokens + logprobs; accumulate.
                 delta_tokens = choice.get("token_ids") or []
                 delta_log_probs = []
                 lp = choice.get("logprobs")
@@ -224,9 +209,7 @@ async def generate_streaming(args: Namespace, sample: Sample, sampling_params: d
 
                 # Surface partial state on the sample immediately. If the outer
                 # abort path cuts us, whatever we've written so far is what
-                # survives. Decode the *accumulated* tokens (not the per-chunk
-                # delta) so multi-token characters straddling a chunk boundary
-                # decode correctly.
+                # survives. Decode accumulated (not per-chunk) tokens.
                 sample.tokens = base_tokens + call_tokens
                 sample.response = base_response + (
                     state.tokenizer.decode(call_tokens, skip_special_tokens=skip_decode) if call_tokens else ""
@@ -244,8 +227,6 @@ async def generate_streaming(args: Namespace, sample: Sample, sampling_params: d
             span.update(build_vllm_meta_trace_attrs({"choices": [last_choice], "usage": last_usage}))
 
     if finish_reason and last_choice is not None:
-        # Finalize exactly like the non-streaming path: align logprobs to tokens,
-        # rebuild meta + output_token_logprobs, then let Sample own status.
         new_response_tokens = call_tokens
         if len(call_log_probs) == len(call_tokens):
             new_response_log_probs = [float(x) for x in call_log_probs]
@@ -273,19 +254,12 @@ async def generate_streaming(args: Namespace, sample: Sample, sampling_params: d
                 [float(lp), int(tid)] for lp, tid in zip(new_response_log_probs, new_response_tokens, strict=True)
             ]
 
-        # MoE routing replay (when requested) ships on the terminal choice as a base64
-        # .npy blob. Decode it into meta_info so the slime-identical
-        # Sample._apply_meta_info does the reshape + assignment (one place, torch int32
-        # tensor — matching slime + the megatron routing-replay consumer). Guard on the
-        # value (not just key presence): vLLM emits ``routed_experts: null`` when replay
-        # is off (vllm_rollout.generate's #183 fix).
+        # MoE routing replay ships on the terminal choice as a base64 .npy blob; decode
+        # into meta_info. Guard on value: vLLM emits ``routed_experts: null`` when off.
         if last_choice.get("routed_experts") is not None:
             raw = base64.b64decode(last_choice["routed_experts"].encode("ascii"), validate=True)
             meta["routed_experts"] = np.load(io.BytesIO(raw), allow_pickle=False)
-        # #2110 renamed update_from_meta_info -> append_response_tokens. The streaming
-        # path already accumulates tokens/log_probs above (partial-rollout abort needs
-        # incremental state), so finalize metadata only: tokens omitted -> no re-append,
-        # _apply_meta_info still runs for finish_reason/usage/terminal info + routing replay.
+        # tokens already accumulated above; finalize metadata only (no token re-append).
         sample.append_response_tokens(args, meta_info=meta)
     elif state.aborted:
         sample.status = Sample.Status.ABORTED

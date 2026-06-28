@@ -1123,15 +1123,6 @@ def get_vime_extra_args_provider(add_custom_arguments=None):
             parser.add_argument(
                 "--opd-teacher-ckpt-step", type=int, default=None, help="The checkpoint step for OPD teacher model."
             )
-            # vime-only, no slime counterpart — engine-driven divergence, NOT a sync gap.
-            # vime scores the OPD-over-vLLM teacher through vLLM's OpenAI-style endpoints
-            # (/inference/v1/generate and, for multimodal, /v1/chat/completions/render),
-            # whose request bodies carry a `model` field. slime's sglang `/generate`
-            # protocol has no such field (one server serves exactly one model), so there
-            # is nothing upstream to translate this arg from. It is optional by design:
-            # vime.rollout.on_policy_distillation omits the field entirely when this is
-            # unset, so a single-model teacher server just uses its loaded model. Only set
-            # it to target a specific served-model name on a named/multi-model teacher.
             parser.add_argument(
                 "--opd-teacher-model",
                 type=str,
@@ -1146,10 +1137,6 @@ def get_vime_extra_args_provider(add_custom_arguments=None):
             return parser
 
         def add_router_arguments(parser):
-            # vllm-router's full CLI surface (~30 knobs: policy, cache_threshold,
-            # retries, health-check, …) under `--router-*` prefix (collision-safe).
-            # exclude_host_port=True because vime owns `--vllm-router-ip / --vllm-router-port`
-            # (defined in vime/backends/vllm_utils/arguments.py:add_vllm_router_arguments).
             RouterArgs.add_cli_args(parser, use_router_prefix=True, exclude_host_port=True)
             return parser
 
@@ -1761,8 +1748,6 @@ def _validate_update_weight_args(args) -> None:
     _resolve_update_weight_disk_dir(args)
 
     if args.update_weight_mode == "delta":
-        # vime divergence: the delta weight-sync path is UNVERIFIED on vime+vLLM.
-        # Guard it off until a real delta-load run passes; remove this raise once verified.
         raise NotImplementedError(
             "--update-weight-mode=delta is unverified on vime+vLLM and is disabled; use --update-weight-mode=full."
         )

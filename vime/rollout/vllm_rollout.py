@@ -309,11 +309,13 @@ async def generate(args: Namespace, sample: Sample, sampling_params: dict[str, A
     if not sample.tokens:
         sample.tokens = prompt_ids
 
+    # Use session_id for consistent hashing routing (vLLM router)
     headers = None
     if sample.session_id:
         if getattr(args, "router_policy", None) == "consistent_hash":
             headers = {"x-session-id": sample.session_id}
 
+    # Prepare payload for vLLM server
     if images:
         content: list[dict[str, Any]] = [{"type": "text", "text": sample.prompt}]
         for image in images:
@@ -383,13 +385,8 @@ async def generate(args: Namespace, sample: Sample, sampling_params: dict[str, A
         meta["prompt_tokens"] = usage.get("prompt_tokens", 0)
         meta["completion_tokens"] = usage.get("completion_tokens", 0)
 
-    # MoE routing replay: vLLM ships routed_experts as a base64 .npy blob on the
-    # OpenAI `choice` (sglang puts a raw int32 array in `meta_info` instead — the
-    # irreducible engine delta). Decode the .npy here, then route it through
-    # `meta_info` so the slime-identical Sample._apply_meta_info does the reshape +
-    # assignment in one place and yields a torch.int32 tensor (matching slime, and
-    # what the megatron routing-replay consumer expects). #183: guard on the value,
-    # since vLLM emits `routed_experts: null` when replay is off.
+    # MoE routing replay: vLLM ships routed_experts as a base64 .npy blob on the choice;
+    # decode here and route through meta_info. #183: guard on value (null when replay off).
     routed_experts = choice.get("routed_experts")
     if routed_experts is not None:
         raw = base64.b64decode(routed_experts.encode("ascii"), validate=True)
@@ -493,6 +490,7 @@ async def generate_and_rm_group(
     if state.aborted:
         return group
 
+    # Generate a unique session_id for each sample in the group
     for sample in group:
         if sample.session_id is None:
             sample.session_id = str(uuid.uuid4())
@@ -545,6 +543,7 @@ async def abort(args: Namespace, rollout_id: int) -> list[list[Sample]]:
                 logger.warning(f"Failed to abort worker at {url}: {result}")
         paused_workers = True
 
+    # make sure all the pending tasks are finished
     count = 0
     while state.pendings:
         done, state.pendings = await asyncio.wait(state.pendings, return_when=asyncio.FIRST_COMPLETED)
