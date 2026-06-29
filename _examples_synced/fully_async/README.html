@@ -58,7 +58,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1"/>
   <meta name="docsearch:language" content="en"/>
   <meta name="docsearch:version" content="0.0.1" />
-    <meta name="docbuild:last-update" content="Jun 25, 2026"/>
+    <meta name="docbuild:last-update" content="Jun 29, 2026"/>
   </head>
   
   
@@ -165,13 +165,19 @@
 <p aria-level="2" class="caption" role="heading"><span class="caption-text">MoE</span></p>
 <ul class="nav bd-sidenav">
 <li class="toctree-l1"><a class="reference internal" href="../../examples/qwen3-30B-A3B.html">Qwen3-30B-A3B with 8xH100</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../examples/glm5.2-744B-A40B.html">GLM-5.2 744B-A40B with 256xH100</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../examples/glm4.7-355B-A32B.html">GLM-4.7 with 64xH100</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../examples/deepseek-r1.html">DeepSeek R1 with 128xH100</a></li>
 </ul>
 <p aria-level="2" class="caption" role="heading"><span class="caption-text">Advanced Features</span></p>
 <ul class="nav bd-sidenav">
 <li class="toctree-l1"><a class="reference internal" href="../../advanced/speculative-decoding.html">Speculative Decoding</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../../advanced/reproducibility.html">Reproducibility</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../../advanced/fault-tolerance.html">Fault Tolerance</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../advanced/observability.html">Observability</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../../advanced/pd-disaggregation.html">PD Disaggregation</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../advanced/external-rollout-engines.html">External Rollout Engines Roadmap</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../advanced/delta-weight-sync.html">Delta Weight Sync</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../../advanced/vllm-config.html">vLLM Config: Advanced Engine Deployment</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../../advanced/megatron-config.html">Megatron Config: Role-Based Training Overrides</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../../advanced/arch-support-beyond-megatron.html">Supporting Model Architectures Beyond Megatron-LM</a></li>
@@ -443,6 +449,8 @@ directory is just the launch script + CI test.</p>
 <li><p><code class="docutils literal notranslate"><span class="pre">run-qwen2.5-0.5B-fully_async.sh</span></code> — single-node, 4-GPU, three-rollout demo
 with Qwen2.5-0.5B-Instruct on dapo-math-17k. Fast enough to be the CI
 smoke test for the fully-async path.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">run-qwen3.5-9B-fully_async.sh</span></code> — single-node, 8-GPU, three-rollout demo
+with Qwen3.5-9B on dapo-math-17k.</p></li>
 </ul>
 <p>The same script doubles as <code class="docutils literal notranslate"><span class="pre">tests/test_qwen2.5_0.5B_fully_async_short.py</span></code> in
 CI.</p>
@@ -484,8 +492,8 @@ work unchanged under fully-async:</p>
 <span class="o">--</span><span class="n">custom</span><span class="o">-</span><span class="n">rm</span><span class="o">-</span><span class="n">path</span>                <span class="n">your</span><span class="o">.</span><span class="n">module</span><span class="o">.</span><span class="n">reward</span>      <span class="c1"># (args, sample | list[Sample]) -&gt; float | list[float]</span>
 </pre></div>
 </div>
-<p>See <code class="docutils literal notranslate"><span class="pre">examples/coding_agent_rl/</span></code> for a non-trivial example that plugs in a
-multi-turn agent this way.</p>
+<p>See <code class="docutils literal notranslate"><span class="pre">examples/swe_codex/</span></code> for a non-trivial example that plugs in a
+multi-turn agent (Claude Code in a Docker-Proxy sandbox) this way.</p>
 </section>
 <section id="worker-internals-very-short">
 <h2>Worker Internals (Very Short)<a class="headerlink" href="#worker-internals-very-short" title="Link to this heading">#</a></h2>
@@ -601,7 +609,7 @@ By Vime Team
   
   <div class="footer-item">
     <p class="last-updated">
-  Last updated on Jun 25, 2026.
+  Last updated on Jun 29, 2026.
   <br/>
 </p>
   </div>

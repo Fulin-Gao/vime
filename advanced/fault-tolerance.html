@@ -53,12 +53,12 @@
     <link rel="icon" href="../_static/logo.ico"/>
     <link rel="index" title="Index" href="../genindex.html" />
     <link rel="search" title="Search" href="../search.html" />
-    <link rel="next" title="PD Disaggregation" href="pd-disaggregation.html" />
+    <link rel="next" title="Observability" href="observability.html" />
     <link rel="prev" title="Reproducibility" href="reproducibility.html" />
   <meta name="viewport" content="width=device-width, initial-scale=1"/>
   <meta name="docsearch:language" content="en"/>
   <meta name="docsearch:version" content="0.0.1" />
-    <meta name="docbuild:last-update" content="Jun 25, 2026"/>
+    <meta name="docbuild:last-update" content="Jun 29, 2026"/>
   </head>
   
   
@@ -165,13 +165,19 @@
 <p aria-level="2" class="caption" role="heading"><span class="caption-text">MoE</span></p>
 <ul class="nav bd-sidenav">
 <li class="toctree-l1"><a class="reference internal" href="../examples/qwen3-30B-A3B.html">Qwen3-30B-A3B with 8xH100</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../examples/glm5.2-744B-A40B.html">GLM-5.2 744B-A40B with 256xH100</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../examples/glm4.7-355B-A32B.html">GLM-4.7 with 64xH100</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../examples/deepseek-r1.html">DeepSeek R1 with 128xH100</a></li>
 </ul>
 <p aria-level="2" class="caption" role="heading"><span class="caption-text">Advanced Features</span></p>
 <ul class="current nav bd-sidenav">
 <li class="toctree-l1"><a class="reference internal" href="speculative-decoding.html">Speculative Decoding</a></li>
 <li class="toctree-l1"><a class="reference internal" href="reproducibility.html">Reproducibility</a></li>
 <li class="toctree-l1 current active"><a class="current reference internal" href="#">Fault Tolerance</a></li>
+<li class="toctree-l1"><a class="reference internal" href="observability.html">Observability</a></li>
 <li class="toctree-l1"><a class="reference internal" href="pd-disaggregation.html">PD Disaggregation</a></li>
+<li class="toctree-l1"><a class="reference internal" href="external-rollout-engines.html">External Rollout Engines Roadmap</a></li>
+<li class="toctree-l1"><a class="reference internal" href="delta-weight-sync.html">Delta Weight Sync</a></li>
 <li class="toctree-l1"><a class="reference internal" href="vllm-config.html">vLLM Config: Advanced Engine Deployment</a></li>
 <li class="toctree-l1"><a class="reference internal" href="megatron-config.html">Megatron Config: Role-Based Training Overrides</a></li>
 <li class="toctree-l1"><a class="reference internal" href="arch-support-beyond-megatron.html">Supporting Model Architectures Beyond Megatron-LM</a></li>
@@ -441,8 +447,8 @@
 <h2>Current Scope<a class="headerlink" href="#current-scope" title="Link to this heading">#</a></h2>
 <p>vime currently provides rollout-engine fault tolerance:</p>
 <ul class="simple">
-<li><p>health checks for vLLM rollout engines;</p></li>
-<li><p>timeout-based rollout engine restart;</p></li>
+<li><p>health checks for vLLM rollout servers;</p></li>
+<li><p>timeout-based rollout server restart;</p></li>
 <li><p>correct parameter update after restart;</p></li>
 <li><p>debug rollout dumps for replaying training-side issues without rerunning rollout;</p></li>
 <li><p>trace/profiling hooks for inspecting long-tail rollout behavior.</p></li>
@@ -451,7 +457,7 @@
 </section>
 <section id="rollout-health-checks">
 <h2>Rollout Health Checks<a class="headerlink" href="#rollout-health-checks" title="Link to this heading">#</a></h2>
-<p>During rollout, vime periodically sends heartbeat requests (<code class="docutils literal notranslate"><span class="pre">/health</span></code>) to all vLLM engines. If a heartbeat times out, the unhealthy vLLM engine is stopped. After the current rollout round completes, vime restarts the engine and updates it with the correct parameters before it serves future rollout requests.</p>
+<p>During rollout, vime periodically sends heartbeat requests (<code class="docutils literal notranslate"><span class="pre">/health</span></code>) to all vLLM servers. If a heartbeat times out, the unhealthy vLLM server is stopped. After the current rollout round completes, vime restarts the server and updates it with the correct parameters before it serves future rollout requests.</p>
 <p>The main arguments are:</p>
 <ul class="simple">
 <li><p><code class="docutils literal notranslate"><span class="pre">--rollout-health-check-first-wait</span></code>: wait before starting heartbeat checks for the first rollout. Large MoE models may compile kernels on first run. Default: <code class="docutils literal notranslate"><span class="pre">300</span></code> seconds.</p></li>
@@ -494,7 +500,7 @@
 <ul class="simple">
 <li><p>If startup health checks fail on large MoE models, increase <code class="docutils literal notranslate"><span class="pre">--rollout-health-check-first-wait</span></code>.</p></li>
 <li><p>If transient load spikes cause false positives, increase <code class="docutils literal notranslate"><span class="pre">--rollout-health-check-timeout</span></code>.</p></li>
-<li><p>If an engine repeatedly restarts after weight sync, inspect the vLLM logs and the latest rollout debug dump.</p></li>
+<li><p>If a server repeatedly restarts after weight sync, inspect the vLLM logs and the latest rollout debug dump.</p></li>
 <li><p>If the trainer fails rather than rollout, resume from checkpoint and use debug replay to isolate whether the saved rollout batch is valid.</p></li>
 </ul>
 </section>
@@ -530,11 +536,11 @@
       </div>
     </a>
     <a class="right-next"
-       href="pd-disaggregation.html"
+       href="observability.html"
        title="next page">
       <div class="prev-next-info">
         <p class="prev-next-subtitle">next</p>
-        <p class="prev-next-title">PD Disaggregation</p>
+        <p class="prev-next-title">Observability</p>
       </div>
       <i class="fa-solid fa-angle-right"></i>
     </a>
@@ -595,7 +601,7 @@ By Vime Team
   
   <div class="footer-item">
     <p class="last-updated">
-  Last updated on Jun 25, 2026.
+  Last updated on Jun 29, 2026.
   <br/>
 </p>
   </div>

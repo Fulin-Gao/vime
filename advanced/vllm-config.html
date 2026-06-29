@@ -54,11 +54,11 @@
     <link rel="index" title="Index" href="../genindex.html" />
     <link rel="search" title="Search" href="../search.html" />
     <link rel="next" title="Megatron Config: Role-Based Training Overrides" href="megatron-config.html" />
-    <link rel="prev" title="PD Disaggregation" href="pd-disaggregation.html" />
+    <link rel="prev" title="Delta Weight Sync" href="delta-weight-sync.html" />
   <meta name="viewport" content="width=device-width, initial-scale=1"/>
   <meta name="docsearch:language" content="en"/>
   <meta name="docsearch:version" content="0.0.1" />
-    <meta name="docbuild:last-update" content="Jun 25, 2026"/>
+    <meta name="docbuild:last-update" content="Jun 29, 2026"/>
   </head>
   
   
@@ -165,13 +165,19 @@
 <p aria-level="2" class="caption" role="heading"><span class="caption-text">MoE</span></p>
 <ul class="nav bd-sidenav">
 <li class="toctree-l1"><a class="reference internal" href="../examples/qwen3-30B-A3B.html">Qwen3-30B-A3B with 8xH100</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../examples/glm5.2-744B-A40B.html">GLM-5.2 744B-A40B with 256xH100</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../examples/glm4.7-355B-A32B.html">GLM-4.7 with 64xH100</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../examples/deepseek-r1.html">DeepSeek R1 with 128xH100</a></li>
 </ul>
 <p aria-level="2" class="caption" role="heading"><span class="caption-text">Advanced Features</span></p>
 <ul class="current nav bd-sidenav">
 <li class="toctree-l1"><a class="reference internal" href="speculative-decoding.html">Speculative Decoding</a></li>
 <li class="toctree-l1"><a class="reference internal" href="reproducibility.html">Reproducibility</a></li>
 <li class="toctree-l1"><a class="reference internal" href="fault-tolerance.html">Fault Tolerance</a></li>
+<li class="toctree-l1"><a class="reference internal" href="observability.html">Observability</a></li>
 <li class="toctree-l1"><a class="reference internal" href="pd-disaggregation.html">PD Disaggregation</a></li>
+<li class="toctree-l1"><a class="reference internal" href="external-rollout-engines.html">External Rollout Engines Roadmap</a></li>
+<li class="toctree-l1"><a class="reference internal" href="delta-weight-sync.html">Delta Weight Sync</a></li>
 <li class="toctree-l1 current active"><a class="current reference internal" href="#">vLLM Config: Advanced Engine Deployment</a></li>
 <li class="toctree-l1"><a class="reference internal" href="megatron-config.html">Megatron Config: Role-Based Training Overrides</a></li>
 <li class="toctree-l1"><a class="reference internal" href="arch-support-beyond-megatron.html">Supporting Model Architectures Beyond Megatron-LM</a></li>
@@ -429,7 +435,7 @@
 <li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#multi-model-serving">3. Multi-Model Serving</a></li>
 <li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#multi-model-with-pd-disaggregation">4. Multi-Model with PD Disaggregation</a></li>
 <li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#placeholder-groups-for-gpu-reservation">5. Placeholder Groups for GPU Reservation</a></li>
-<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#per-group-serverargs-overrides">6. Per-Group ServerArgs Overrides</a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#per-group-engineargs-overrides">6. Per-Group EngineArgs Overrides</a></li>
 <li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#standalone-vllm-launcher">7. Standalone vLLM Launcher</a></li>
 </ul>
 </li>
@@ -699,18 +705,27 @@
 <span class="kn">from</span><span class="w"> </span><span class="nn">vime.utils.http_utils</span><span class="w"> </span><span class="kn">import</span> <span class="n">post</span>
 
 <span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">my_generate</span><span class="p">(</span><span class="n">args</span><span class="p">,</span> <span class="n">sample</span><span class="p">,</span> <span class="n">sampling_params</span><span class="p">):</span>
-    <span class="c1"># Route to the actor model (default)</span>
-    <span class="n">actor_url</span> <span class="o">=</span> <span class="n">get_model_url</span><span class="p">(</span><span class="n">args</span><span class="p">,</span> <span class="s2">&quot;actor&quot;</span><span class="p">,</span> <span class="s2">&quot;/generate&quot;</span><span class="p">)</span>
-    <span class="n">output</span> <span class="o">=</span> <span class="k">await</span> <span class="n">post</span><span class="p">(</span><span class="n">actor_url</span><span class="p">,</span> <span class="p">{</span><span class="s2">&quot;text&quot;</span><span class="p">:</span> <span class="n">sample</span><span class="o">.</span><span class="n">prompt</span><span class="p">,</span> <span class="s2">&quot;sampling_params&quot;</span><span class="p">:</span> <span class="n">sampling_params</span><span class="p">})</span>
-    
+    <span class="c1"># Route to the actor model (default endpoint is /inference/v1/generate)</span>
+    <span class="n">actor_url</span> <span class="o">=</span> <span class="n">get_model_url</span><span class="p">(</span><span class="n">args</span><span class="p">,</span> <span class="s2">&quot;actor&quot;</span><span class="p">)</span>
+    <span class="n">output</span> <span class="o">=</span> <span class="k">await</span> <span class="n">post</span><span class="p">(</span><span class="n">actor_url</span><span class="p">,</span> <span class="p">{</span>
+        <span class="s2">&quot;model&quot;</span><span class="p">:</span> <span class="n">args</span><span class="o">.</span><span class="n">hf_checkpoint</span><span class="p">,</span>
+        <span class="s2">&quot;token_ids&quot;</span><span class="p">:</span> <span class="n">sample</span><span class="o">.</span><span class="n">tokens</span><span class="p">,</span>
+        <span class="s2">&quot;sampling_params&quot;</span><span class="p">:</span> <span class="p">{</span><span class="s2">&quot;max_tokens&quot;</span><span class="p">:</span> <span class="mi">1024</span><span class="p">,</span> <span class="s2">&quot;temperature&quot;</span><span class="p">:</span> <span class="mf">1.0</span><span class="p">,</span> <span class="s2">&quot;top_p&quot;</span><span class="p">:</span> <span class="mf">1.0</span><span class="p">,</span> <span class="s2">&quot;logprobs&quot;</span><span class="p">:</span> <span class="mi">1</span><span class="p">},</span>
+    <span class="p">})</span>
+    <span class="c1"># output[&quot;choices&quot;][0] carries token_ids, logprobs.content[i].logprob, and finish_reason</span>
+
     <span class="c1"># Route to the reference model</span>
-    <span class="n">ref_url</span> <span class="o">=</span> <span class="n">get_model_url</span><span class="p">(</span><span class="n">args</span><span class="p">,</span> <span class="s2">&quot;ref&quot;</span><span class="p">,</span> <span class="s2">&quot;/generate&quot;</span><span class="p">)</span>
-    <span class="n">ref_output</span> <span class="o">=</span> <span class="k">await</span> <span class="n">post</span><span class="p">(</span><span class="n">ref_url</span><span class="p">,</span> <span class="p">{</span><span class="s2">&quot;text&quot;</span><span class="p">:</span> <span class="n">sample</span><span class="o">.</span><span class="n">prompt</span><span class="p">,</span> <span class="s2">&quot;sampling_params&quot;</span><span class="p">:</span> <span class="n">sampling_params</span><span class="p">})</span>
-    
+    <span class="n">ref_url</span> <span class="o">=</span> <span class="n">get_model_url</span><span class="p">(</span><span class="n">args</span><span class="p">,</span> <span class="s2">&quot;ref&quot;</span><span class="p">)</span>
+    <span class="n">ref_output</span> <span class="o">=</span> <span class="k">await</span> <span class="n">post</span><span class="p">(</span><span class="n">ref_url</span><span class="p">,</span> <span class="p">{</span>
+        <span class="s2">&quot;model&quot;</span><span class="p">:</span> <span class="n">args</span><span class="o">.</span><span class="n">hf_checkpoint</span><span class="p">,</span>
+        <span class="s2">&quot;token_ids&quot;</span><span class="p">:</span> <span class="n">sample</span><span class="o">.</span><span class="n">tokens</span><span class="p">,</span>
+        <span class="s2">&quot;sampling_params&quot;</span><span class="p">:</span> <span class="p">{</span><span class="s2">&quot;max_tokens&quot;</span><span class="p">:</span> <span class="mi">1024</span><span class="p">,</span> <span class="s2">&quot;temperature&quot;</span><span class="p">:</span> <span class="mf">1.0</span><span class="p">,</span> <span class="s2">&quot;top_p&quot;</span><span class="p">:</span> <span class="mf">1.0</span><span class="p">,</span> <span class="s2">&quot;logprobs&quot;</span><span class="p">:</span> <span class="mi">1</span><span class="p">},</span>
+    <span class="p">})</span>
+
     <span class="c1"># Route to the reward model (e.g., OpenAI-compatible API)</span>
     <span class="n">reward_url</span> <span class="o">=</span> <span class="n">get_model_url</span><span class="p">(</span><span class="n">args</span><span class="p">,</span> <span class="s2">&quot;reward&quot;</span><span class="p">,</span> <span class="s2">&quot;/v1/chat/completions&quot;</span><span class="p">)</span>
     <span class="n">reward_output</span> <span class="o">=</span> <span class="k">await</span> <span class="n">post</span><span class="p">(</span><span class="n">reward_url</span><span class="p">,</span> <span class="p">{</span><span class="o">...</span><span class="p">})</span>
-    
+
     <span class="o">...</span>
 </pre></div>
 </div>
@@ -755,9 +770,9 @@
 </pre></div>
 </div>
 </section>
-<section id="per-group-serverargs-overrides">
-<h3>6. Per-Group ServerArgs Overrides<a class="headerlink" href="#per-group-serverargs-overrides" title="Link to this heading">#</a></h3>
-<p>Use <code class="docutils literal notranslate"><span class="pre">overrides</span></code> to apply vLLM <code class="docutils literal notranslate"><span class="pre">ServerArgs</span></code> fields to specific server groups without affecting others:</p>
+<section id="per-group-engineargs-overrides">
+<h3>6. Per-Group EngineArgs Overrides<a class="headerlink" href="#per-group-engineargs-overrides" title="Link to this heading">#</a></h3>
+<p>Use <code class="docutils literal notranslate"><span class="pre">overrides</span></code> to apply vLLM <code class="docutils literal notranslate"><span class="pre">EngineArgs</span></code> fields to specific server groups without affecting others:</p>
 <div class="highlight-yaml notranslate"><div class="highlight"><pre><span></span><span class="nt">vllm</span><span class="p">:</span>
 <span class="w">  </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">actor</span>
 <span class="w">    </span><span class="nt">server_groups</span><span class="p">:</span>
@@ -780,7 +795,7 @@
 </section>
 <section id="standalone-vllm-launcher">
 <h3>7. Standalone vLLM Launcher<a class="headerlink" href="#standalone-vllm-launcher" title="Link to this heading">#</a></h3>
-<p>While <code class="docutils literal notranslate"><span class="pre">--vllm-config</span></code> is designed for vime’s training pipeline, it also works as a powerful launcher for pure inference scenarios using the <code class="docutils literal notranslate"><span class="pre">--rollout-external</span></code> pattern or by configuring vime to focus solely on serving.</p>
+<p>While <code class="docutils literal notranslate"><span class="pre">--vllm-config</span></code> is designed for vime’s training pipeline, it also works as a powerful launcher for pure inference scenarios using external engine addresses or by configuring vime to focus solely on serving.</p>
 <p><strong>Using external engines with a pre-launched topology:</strong></p>
 <p>For complex production deployments, you may want to pre-launch vLLM engines independently and connect them to vime:</p>
 <div class="highlight-bash notranslate"><div class="highlight"><pre><span></span><span class="c1"># Step 1: Launch vLLM engines externally</span>
@@ -789,14 +804,19 @@ vllm<span class="w"> </span>serve<span class="w"> </span>/path/to/model<span cla
 
 <span class="c1"># Step 2: Connect vime to external engines</span>
 python<span class="w"> </span>train.py<span class="w"> </span><span class="se">\</span>
-<span class="w">  </span>--rollout-external<span class="w"> </span><span class="se">\</span>
 <span class="w">  </span>--rollout-external-engine-addrs<span class="w"> </span>host1:10090<span class="w"> </span>host2:10091<span class="w"> </span><span class="se">\</span>
 <span class="w">  </span>...
 </pre></div>
 </div>
+<p>vime queries each external engine’s <code class="docutils literal notranslate"><span class="pre">/server_info</span></code> endpoint to infer
+<code class="docutils literal notranslate"><span class="pre">rollout_num_gpus</span></code>, per-engine GPU counts, vLLM parallel sizes, and
+prefill/decode worker types. If no <code class="docutils literal notranslate"><span class="pre">--vllm-router-ip/--vllm-router-port</span></code>
+is provided, vime launches its own router and registers the external engines
+to it.</p>
 <blockquote>
-<div><p><strong>Note:</strong> <code class="docutils literal notranslate"><span class="pre">--vllm-config</span></code> and <code class="docutils literal notranslate"><span class="pre">--rollout-external</span></code> are mutually exclusive. Use <code class="docutils literal notranslate"><span class="pre">--vllm-config</span></code> when you want vime to manage the full engine lifecycle; use <code class="docutils literal notranslate"><span class="pre">--rollout-external</span></code> when engines are pre-deployed.</p>
+<div><p><strong>Note:</strong> <code class="docutils literal notranslate"><span class="pre">--vllm-config</span></code> and <code class="docutils literal notranslate"><span class="pre">--rollout-external-engine-addrs</span></code> are mutually exclusive. Use <code class="docutils literal notranslate"><span class="pre">--vllm-config</span></code> when you want vime to manage the full engine lifecycle; use <code class="docutils literal notranslate"><span class="pre">--rollout-external-engine-addrs</span></code> when engines are pre-deployed.</p>
 </div></blockquote>
+<p>For external-engine selection, update from disk, and delta disk transport, see <a class="reference internal" href="external-rollout-engines.html"><span class="std std-doc">External Rollout Engines Roadmap</span></a>.</p>
 </section>
 </section>
 <hr class="docutils" />
@@ -858,7 +878,7 @@ python<span class="w"> </span>train.py<span class="w"> </span><span class="se">\
 <tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">--prefill-num-servers</span></code></p></td>
 <td><p>PD disaggregation is configured via <code class="docutils literal notranslate"><span class="pre">server_groups</span></code> in the YAML</p></td>
 </tr>
-<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">--rollout-external</span></code></p></td>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">--rollout-external-engine-addrs</span></code></p></td>
 <td><p>External engines have their own topology; config manages the lifecycle internally</p></td>
 </tr>
 </tbody>
@@ -921,27 +941,29 @@ python<span class="w"> </span>train.py<span class="w"> </span><span class="se">\
 <span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">generate_with_models</span><span class="p">(</span><span class="n">args</span><span class="p">,</span> <span class="n">sample</span><span class="p">,</span> <span class="n">sampling_params</span><span class="p">):</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;Generate using actor, score with reward model, compare with reference.&quot;&quot;&quot;</span>
     
-    <span class="c1"># Generate from actor</span>
-    <span class="n">actor_url</span> <span class="o">=</span> <span class="n">get_model_url</span><span class="p">(</span><span class="n">args</span><span class="p">,</span> <span class="s2">&quot;actor&quot;</span><span class="p">,</span> <span class="s2">&quot;/generate&quot;</span><span class="p">)</span>
+    <span class="c1"># Generate from actor (default endpoint is /inference/v1/generate)</span>
+    <span class="n">actor_url</span> <span class="o">=</span> <span class="n">get_model_url</span><span class="p">(</span><span class="n">args</span><span class="p">,</span> <span class="s2">&quot;actor&quot;</span><span class="p">)</span>
     <span class="n">actor_output</span> <span class="o">=</span> <span class="k">await</span> <span class="n">post</span><span class="p">(</span><span class="n">actor_url</span><span class="p">,</span> <span class="p">{</span>
-        <span class="s2">&quot;text&quot;</span><span class="p">:</span> <span class="n">sample</span><span class="o">.</span><span class="n">prompt</span><span class="p">,</span>
-        <span class="s2">&quot;sampling_params&quot;</span><span class="p">:</span> <span class="n">sampling_params</span><span class="p">,</span>
-        <span class="s2">&quot;return_logprob&quot;</span><span class="p">:</span> <span class="kc">True</span><span class="p">,</span>
+        <span class="s2">&quot;model&quot;</span><span class="p">:</span> <span class="n">args</span><span class="o">.</span><span class="n">hf_checkpoint</span><span class="p">,</span>
+        <span class="s2">&quot;token_ids&quot;</span><span class="p">:</span> <span class="n">sample</span><span class="o">.</span><span class="n">tokens</span><span class="p">,</span>
+        <span class="s2">&quot;sampling_params&quot;</span><span class="p">:</span> <span class="p">{</span><span class="s2">&quot;max_tokens&quot;</span><span class="p">:</span> <span class="mi">1024</span><span class="p">,</span> <span class="s2">&quot;temperature&quot;</span><span class="p">:</span> <span class="mf">1.0</span><span class="p">,</span> <span class="s2">&quot;top_p&quot;</span><span class="p">:</span> <span class="mf">1.0</span><span class="p">,</span> <span class="s2">&quot;logprobs&quot;</span><span class="p">:</span> <span class="mi">1</span><span class="p">},</span>
     <span class="p">})</span>
-    
-    <span class="c1"># Get reference logprobs for KL penalty</span>
-    <span class="n">ref_url</span> <span class="o">=</span> <span class="n">get_model_url</span><span class="p">(</span><span class="n">args</span><span class="p">,</span> <span class="s2">&quot;ref&quot;</span><span class="p">,</span> <span class="s2">&quot;/generate&quot;</span><span class="p">)</span>
+    <span class="n">response_ids</span> <span class="o">=</span> <span class="n">actor_output</span><span class="p">[</span><span class="s2">&quot;choices&quot;</span><span class="p">][</span><span class="mi">0</span><span class="p">][</span><span class="s2">&quot;token_ids&quot;</span><span class="p">]</span>
+
+    <span class="c1"># Get reference logprobs over the prompt+response. max_tokens=1 + prompt_logprobs scores</span>
+    <span class="c1"># the submitted token_ids; read them from the top-level &quot;prompt_logprobs&quot; field.</span>
+    <span class="n">ref_url</span> <span class="o">=</span> <span class="n">get_model_url</span><span class="p">(</span><span class="n">args</span><span class="p">,</span> <span class="s2">&quot;ref&quot;</span><span class="p">)</span>
     <span class="n">ref_output</span> <span class="o">=</span> <span class="k">await</span> <span class="n">post</span><span class="p">(</span><span class="n">ref_url</span><span class="p">,</span> <span class="p">{</span>
-        <span class="s2">&quot;text&quot;</span><span class="p">:</span> <span class="n">sample</span><span class="o">.</span><span class="n">prompt</span> <span class="o">+</span> <span class="n">actor_output</span><span class="p">[</span><span class="s2">&quot;text&quot;</span><span class="p">],</span>
-        <span class="s2">&quot;sampling_params&quot;</span><span class="p">:</span> <span class="p">{</span><span class="s2">&quot;max_new_tokens&quot;</span><span class="p">:</span> <span class="mi">0</span><span class="p">,</span> <span class="s2">&quot;temperature&quot;</span><span class="p">:</span> <span class="mi">0</span><span class="p">},</span>
-        <span class="s2">&quot;return_logprob&quot;</span><span class="p">:</span> <span class="kc">True</span><span class="p">,</span>
+        <span class="s2">&quot;model&quot;</span><span class="p">:</span> <span class="n">args</span><span class="o">.</span><span class="n">hf_checkpoint</span><span class="p">,</span>
+        <span class="s2">&quot;token_ids&quot;</span><span class="p">:</span> <span class="n">sample</span><span class="o">.</span><span class="n">tokens</span> <span class="o">+</span> <span class="n">response_ids</span><span class="p">,</span>
+        <span class="s2">&quot;sampling_params&quot;</span><span class="p">:</span> <span class="p">{</span><span class="s2">&quot;max_tokens&quot;</span><span class="p">:</span> <span class="mi">1</span><span class="p">,</span> <span class="s2">&quot;temperature&quot;</span><span class="p">:</span> <span class="mf">0.0</span><span class="p">,</span> <span class="s2">&quot;prompt_logprobs&quot;</span><span class="p">:</span> <span class="mi">1</span><span class="p">},</span>
     <span class="p">})</span>
-    
-    <span class="c1"># Score with reward model</span>
+
+    <span class="c1"># Score with reward model (OpenAI-compatible)</span>
     <span class="n">reward_url</span> <span class="o">=</span> <span class="n">get_model_url</span><span class="p">(</span><span class="n">args</span><span class="p">,</span> <span class="s2">&quot;reward&quot;</span><span class="p">,</span> <span class="s2">&quot;/v1/chat/completions&quot;</span><span class="p">)</span>
     <span class="n">reward_output</span> <span class="o">=</span> <span class="k">await</span> <span class="n">post</span><span class="p">(</span><span class="n">reward_url</span><span class="p">,</span> <span class="p">{</span>
         <span class="s2">&quot;model&quot;</span><span class="p">:</span> <span class="s2">&quot;reward&quot;</span><span class="p">,</span>
-        <span class="s2">&quot;messages&quot;</span><span class="p">:</span> <span class="p">[{</span><span class="s2">&quot;role&quot;</span><span class="p">:</span> <span class="s2">&quot;user&quot;</span><span class="p">,</span> <span class="s2">&quot;content&quot;</span><span class="p">:</span> <span class="n">sample</span><span class="o">.</span><span class="n">prompt</span> <span class="o">+</span> <span class="n">actor_output</span><span class="p">[</span><span class="s2">&quot;text&quot;</span><span class="p">]}],</span>
+        <span class="s2">&quot;messages&quot;</span><span class="p">:</span> <span class="p">[{</span><span class="s2">&quot;role&quot;</span><span class="p">:</span> <span class="s2">&quot;user&quot;</span><span class="p">,</span> <span class="s2">&quot;content&quot;</span><span class="p">:</span> <span class="n">sample</span><span class="o">.</span><span class="n">prompt</span><span class="p">}],</span>
     <span class="p">})</span>
     
     <span class="c1"># ... process outputs and return Sample</span>
@@ -969,7 +991,7 @@ python<span class="w"> </span>train.py<span class="w"> </span><span class="se">\
 </section>
 <section id="q-can-i-use-vllm-config-without-training-inference-only">
 <h3>Q: Can I use <code class="docutils literal notranslate"><span class="pre">--vllm-config</span></code> without training (inference only)?<a class="headerlink" href="#q-can-i-use-vllm-config-without-training-inference-only" title="Link to this heading">#</a></h3>
-<p>While <code class="docutils literal notranslate"><span class="pre">--vllm-config</span></code> is designed for vime’s training loop, you can effectively use it for inference-only scenarios by configuring a rollout-only run. For fully standalone vLLM serving, consider using vLLM’s native <code class="docutils literal notranslate"><span class="pre">vllm</span> <span class="pre">serve</span></code> directly or the <code class="docutils literal notranslate"><span class="pre">--rollout-external</span></code> mode for connecting to pre-deployed engines.</p>
+<p>While <code class="docutils literal notranslate"><span class="pre">--vllm-config</span></code> is designed for vime’s training loop, you can effectively use it for inference-only scenarios by configuring a rollout-only run. For fully standalone vLLM serving, consider using vLLM’s native <code class="docutils literal notranslate"><span class="pre">_run_vllm_server</span></code> directly or <code class="docutils literal notranslate"><span class="pre">--rollout-external-engine-addrs</span></code> for connecting to pre-deployed engines.</p>
 </section>
 <section id="q-what-is-the-relationship-between-vllm-config-and-prefill-num-servers">
 <h3>Q: What is the relationship between <code class="docutils literal notranslate"><span class="pre">--vllm-config</span></code> and <code class="docutils literal notranslate"><span class="pre">--prefill-num-servers</span></code>?<a class="headerlink" href="#q-what-is-the-relationship-between-vllm-config-and-prefill-num-servers" title="Link to this heading">#</a></h3>
@@ -990,12 +1012,12 @@ python<span class="w"> </span>train.py<span class="w"> </span><span class="se">\
                   
 <div class="prev-next-area">
     <a class="left-prev"
-       href="pd-disaggregation.html"
+       href="delta-weight-sync.html"
        title="previous page">
       <i class="fa-solid fa-angle-left"></i>
       <div class="prev-next-info">
         <p class="prev-next-subtitle">previous</p>
-        <p class="prev-next-title">PD Disaggregation</p>
+        <p class="prev-next-title">Delta Weight Sync</p>
       </div>
     </a>
     <a class="right-next"
@@ -1041,7 +1063,7 @@ python<span class="w"> </span>train.py<span class="w"> </span><span class="se">\
 <li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#multi-model-serving">3. Multi-Model Serving</a></li>
 <li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#multi-model-with-pd-disaggregation">4. Multi-Model with PD Disaggregation</a></li>
 <li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#placeholder-groups-for-gpu-reservation">5. Placeholder Groups for GPU Reservation</a></li>
-<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#per-group-serverargs-overrides">6. Per-Group ServerArgs Overrides</a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#per-group-engineargs-overrides">6. Per-Group EngineArgs Overrides</a></li>
 <li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#standalone-vllm-launcher">7. Standalone vLLM Launcher</a></li>
 </ul>
 </li>
@@ -1095,7 +1117,7 @@ By Vime Team
   
   <div class="footer-item">
     <p class="last-updated">
-  Last updated on Jun 25, 2026.
+  Last updated on Jun 29, 2026.
   <br/>
 </p>
   </div>

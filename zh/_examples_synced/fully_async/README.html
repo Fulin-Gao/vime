@@ -58,7 +58,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1"/>
   <meta name="docsearch:language" content="zh"/>
   <meta name="docsearch:version" content="0.0.1" />
-    <meta name="docbuild:last-update" content="2026 年 06 月 25 日"/>
+    <meta name="docbuild:last-update" content="2026 年 06 月 29 日"/>
   </head>
   
   
@@ -165,13 +165,19 @@
 <p aria-level="2" class="caption" role="heading"><span class="caption-text">MoE</span></p>
 <ul class="nav bd-sidenav">
 <li class="toctree-l1"><a class="reference internal" href="../../examples/qwen3-30B-A3B.html">8xH100 训练 Qwen3-30B-A3B</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../examples/glm5.2-744B-A40B.html">256xH100 训练 GLM-5.2 744B-A40B</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../examples/glm4.7-355B-A32B.html">64xH100 训练 GLM-4.7</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../examples/deepseek-r1.html">128xH100 训练 DeepSeek R1</a></li>
 </ul>
 <p aria-level="2" class="caption" role="heading"><span class="caption-text">高级特性</span></p>
 <ul class="nav bd-sidenav">
 <li class="toctree-l1"><a class="reference internal" href="../../advanced/speculative-decoding.html">投机采样</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../../advanced/reproducibility.html">可复现性</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../../advanced/fault-tolerance.html">容灾</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../advanced/observability.html">观测</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../../advanced/pd-disaggregation.html">PD 分离</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../advanced/external-rollout-engines.html">External Rollout Engines 配置路线图</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../advanced/delta-weight-sync.html">Delta 权重同步</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../../advanced/vllm-config.html">vLLM Config：高级引擎部署</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../../advanced/megatron-config.html">Megatron Config：按角色覆盖训练参数</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../../advanced/arch-support-beyond-megatron.html">在 Megatron-LM 中快速支持新模型架构</a></li>
@@ -443,6 +449,8 @@ directory is just the launch script + CI test.</p>
 <li><p><code class="docutils literal notranslate"><span class="pre">run-qwen2.5-0.5B-fully_async.sh</span></code> — single-node, 4-GPU, three-rollout demo
 with Qwen2.5-0.5B-Instruct on dapo-math-17k. Fast enough to be the CI
 smoke test for the fully-async path.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">run-qwen3.5-9B-fully_async.sh</span></code> — single-node, 8-GPU, three-rollout demo
+with Qwen3.5-9B on dapo-math-17k.</p></li>
 </ul>
 <p>The same script doubles as <code class="docutils literal notranslate"><span class="pre">tests/test_qwen2.5_0.5B_fully_async_short.py</span></code> in
 CI.</p>
@@ -484,8 +492,8 @@ work unchanged under fully-async:</p>
 <span class="o">--</span><span class="n">custom</span><span class="o">-</span><span class="n">rm</span><span class="o">-</span><span class="n">path</span>                <span class="n">your</span><span class="o">.</span><span class="n">module</span><span class="o">.</span><span class="n">reward</span>      <span class="c1"># (args, sample | list[Sample]) -&gt; float | list[float]</span>
 </pre></div>
 </div>
-<p>See <code class="docutils literal notranslate"><span class="pre">examples/coding_agent_rl/</span></code> for a non-trivial example that plugs in a
-multi-turn agent this way.</p>
+<p>See <code class="docutils literal notranslate"><span class="pre">examples/swe_codex/</span></code> for a non-trivial example that plugs in a
+multi-turn agent (Claude Code in a Docker-Proxy sandbox) this way.</p>
 </section>
 <section id="worker-internals-very-short">
 <h2>Worker Internals (Very Short)<a class="headerlink" href="#worker-internals-very-short" title="链接到此标题。">#</a></h2>
@@ -601,7 +609,7 @@ yet wired; for now the trajectory is re-queued and starts over.</p></li>
   
   <div class="footer-item">
     <p class="last-updated">
-  最后更新于 2026 年 06 月 25 日.
+  最后更新于 2026 年 06 月 29 日.
   <br/>
 </p>
   </div>

@@ -53,12 +53,12 @@
     <link rel="icon" href="../_static/logo.ico"/>
     <link rel="index" title="索引" href="../genindex.html" />
     <link rel="search" title="搜索" href="../search.html" />
-    <link rel="next" title="PD 分离" href="pd-disaggregation.html" />
+    <link rel="next" title="观测" href="observability.html" />
     <link rel="prev" title="可复现性" href="reproducibility.html" />
   <meta name="viewport" content="width=device-width, initial-scale=1"/>
   <meta name="docsearch:language" content="zh"/>
   <meta name="docsearch:version" content="0.0.1" />
-    <meta name="docbuild:last-update" content="2026 年 06 月 25 日"/>
+    <meta name="docbuild:last-update" content="2026 年 06 月 29 日"/>
   </head>
   
   
@@ -165,13 +165,19 @@
 <p aria-level="2" class="caption" role="heading"><span class="caption-text">MoE</span></p>
 <ul class="nav bd-sidenav">
 <li class="toctree-l1"><a class="reference internal" href="../examples/qwen3-30B-A3B.html">8xH100 训练 Qwen3-30B-A3B</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../examples/glm5.2-744B-A40B.html">256xH100 训练 GLM-5.2 744B-A40B</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../examples/glm4.7-355B-A32B.html">64xH100 训练 GLM-4.7</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../examples/deepseek-r1.html">128xH100 训练 DeepSeek R1</a></li>
 </ul>
 <p aria-level="2" class="caption" role="heading"><span class="caption-text">高级特性</span></p>
 <ul class="current nav bd-sidenav">
 <li class="toctree-l1"><a class="reference internal" href="speculative-decoding.html">投机采样</a></li>
 <li class="toctree-l1"><a class="reference internal" href="reproducibility.html">可复现性</a></li>
 <li class="toctree-l1 current active"><a class="current reference internal" href="#">容灾</a></li>
+<li class="toctree-l1"><a class="reference internal" href="observability.html">观测</a></li>
 <li class="toctree-l1"><a class="reference internal" href="pd-disaggregation.html">PD 分离</a></li>
+<li class="toctree-l1"><a class="reference internal" href="external-rollout-engines.html">External Rollout Engines 配置路线图</a></li>
+<li class="toctree-l1"><a class="reference internal" href="delta-weight-sync.html">Delta 权重同步</a></li>
 <li class="toctree-l1"><a class="reference internal" href="vllm-config.html">vLLM Config：高级引擎部署</a></li>
 <li class="toctree-l1"><a class="reference internal" href="megatron-config.html">Megatron Config：按角色覆盖训练参数</a></li>
 <li class="toctree-l1"><a class="reference internal" href="arch-support-beyond-megatron.html">在 Megatron-LM 中快速支持新模型架构</a></li>
@@ -441,8 +447,8 @@
 <h2>当前覆盖范围<a class="headerlink" href="#id2" title="链接到此标题。">#</a></h2>
 <p>vime 当前提供 rollout-engine fault tolerance：</p>
 <ul class="simple">
-<li><p>对 vLLM rollout engine 做 health check；</p></li>
-<li><p>heartbeat timeout 后重启 rollout engine；</p></li>
+<li><p>对 vLLM rollout server 做 health check；</p></li>
+<li><p>heartbeat timeout 后重启 rollout server；</p></li>
 <li><p>重启后正确更新参数；</p></li>
 <li><p>保存 debug rollout dump，用于不重新跑 rollout 的情况下 replay 训练侧问题；</p></li>
 <li><p>trace/profiling hook，用于检查 long-tail rollout 行为。</p></li>
@@ -451,7 +457,7 @@
 </section>
 <section id="rollout-health-checks">
 <h2>Rollout Health Checks<a class="headerlink" href="#rollout-health-checks" title="链接到此标题。">#</a></h2>
-<p>rollout 过程中，vime 会定期向所有 vLLM engine 发送 heartbeat 请求（<code class="docutils literal notranslate"><span class="pre">/health</span></code>）。如果 heartbeat timeout，异常 vLLM engine 会被停止。当前 rollout round 完成后，vime 会重启 engine，并在其继续服务后续 rollout 请求前更新到正确参数。</p>
+<p>rollout 过程中，vime 会定期向所有 vLLM server 发送 heartbeat 请求（<code class="docutils literal notranslate"><span class="pre">/health</span></code>）。如果 heartbeat timeout，异常 vLLM server 会被停止。当前 rollout round 完成后，vime 会重启 server，并在其继续服务后续 rollout 请求前更新到正确参数。</p>
 <p>主要参数：</p>
 <ul class="simple">
 <li><p><code class="docutils literal notranslate"><span class="pre">--rollout-health-check-first-wait</span></code>：第一次 rollout 前等待多久再开始 heartbeat。大 MoE 模型首次运行可能需要 kernel compilation。默认 <code class="docutils literal notranslate"><span class="pre">300</span></code> 秒。</p></li>
@@ -494,7 +500,7 @@
 <ul class="simple">
 <li><p>如果大 MoE 模型启动阶段 health check 失败，增大 <code class="docutils literal notranslate"><span class="pre">--rollout-health-check-first-wait</span></code>。</p></li>
 <li><p>如果短暂负载高峰导致误判，增大 <code class="docutils literal notranslate"><span class="pre">--rollout-health-check-timeout</span></code>。</p></li>
-<li><p>如果某个 engine 在 weight sync 后反复重启，检查 vLLM log 和最近的 rollout debug dump。</p></li>
+<li><p>如果某个 server 在 weight sync 后反复重启，检查 vLLM log 和最近的 rollout debug dump。</p></li>
 <li><p>如果失败发生在 trainer 而非 rollout，从 checkpoint 恢复，并用 debug replay 确认保存的 rollout batch 是否有效。</p></li>
 </ul>
 </section>
@@ -530,11 +536,11 @@
       </div>
     </a>
     <a class="right-next"
-       href="pd-disaggregation.html"
+       href="observability.html"
        title="下一页">
       <div class="prev-next-info">
         <p class="prev-next-subtitle">下一页</p>
-        <p class="prev-next-title">PD 分离</p>
+        <p class="prev-next-title">观测</p>
       </div>
       <i class="fa-solid fa-angle-right"></i>
     </a>
@@ -595,7 +601,7 @@
   
   <div class="footer-item">
     <p class="last-updated">
-  最后更新于 2026 年 06 月 25 日.
+  最后更新于 2026 年 06 月 29 日.
   <br/>
 </p>
   </div>

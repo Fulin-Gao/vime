@@ -54,11 +54,11 @@
     <link rel="index" title="索引" href="../genindex.html" />
     <link rel="search" title="搜索" href="../search.html" />
     <link rel="next" title="Megatron Config：按角色覆盖训练参数" href="megatron-config.html" />
-    <link rel="prev" title="PD 分离" href="pd-disaggregation.html" />
+    <link rel="prev" title="Delta 权重同步" href="delta-weight-sync.html" />
   <meta name="viewport" content="width=device-width, initial-scale=1"/>
   <meta name="docsearch:language" content="zh"/>
   <meta name="docsearch:version" content="0.0.1" />
-    <meta name="docbuild:last-update" content="2026 年 06 月 25 日"/>
+    <meta name="docbuild:last-update" content="2026 年 06 月 29 日"/>
   </head>
   
   
@@ -165,13 +165,19 @@
 <p aria-level="2" class="caption" role="heading"><span class="caption-text">MoE</span></p>
 <ul class="nav bd-sidenav">
 <li class="toctree-l1"><a class="reference internal" href="../examples/qwen3-30B-A3B.html">8xH100 训练 Qwen3-30B-A3B</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../examples/glm5.2-744B-A40B.html">256xH100 训练 GLM-5.2 744B-A40B</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../examples/glm4.7-355B-A32B.html">64xH100 训练 GLM-4.7</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../examples/deepseek-r1.html">128xH100 训练 DeepSeek R1</a></li>
 </ul>
 <p aria-level="2" class="caption" role="heading"><span class="caption-text">高级特性</span></p>
 <ul class="current nav bd-sidenav">
 <li class="toctree-l1"><a class="reference internal" href="speculative-decoding.html">投机采样</a></li>
 <li class="toctree-l1"><a class="reference internal" href="reproducibility.html">可复现性</a></li>
 <li class="toctree-l1"><a class="reference internal" href="fault-tolerance.html">容灾</a></li>
+<li class="toctree-l1"><a class="reference internal" href="observability.html">观测</a></li>
 <li class="toctree-l1"><a class="reference internal" href="pd-disaggregation.html">PD 分离</a></li>
+<li class="toctree-l1"><a class="reference internal" href="external-rollout-engines.html">External Rollout Engines 配置路线图</a></li>
+<li class="toctree-l1"><a class="reference internal" href="delta-weight-sync.html">Delta 权重同步</a></li>
 <li class="toctree-l1 current active"><a class="current reference internal" href="#">vLLM Config：高级引擎部署</a></li>
 <li class="toctree-l1"><a class="reference internal" href="megatron-config.html">Megatron Config：按角色覆盖训练参数</a></li>
 <li class="toctree-l1"><a class="reference internal" href="arch-support-beyond-megatron.html">在 Megatron-LM 中快速支持新模型架构</a></li>
@@ -429,7 +435,7 @@
 <li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#id8">3. 多模型服务</a></li>
 <li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#id9">4. 多模型 + PD 分离</a></li>
 <li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#gpu">5. 占位组用于 GPU 预留</a></li>
-<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#serverargs">6. 按组覆盖 ServerArgs</a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#engineargs">6. 按组覆盖 EngineArgs</a></li>
 <li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#vllm">7. 独立 vLLM 启动器</a></li>
 </ul>
 </li>
@@ -565,7 +571,7 @@
 <tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">overrides</span></code></p></td>
 <td><p><code class="docutils literal notranslate"><span class="pre">dict</span></code></p></td>
 <td><p><code class="docutils literal notranslate"><span class="pre">{}</span></code></p></td>
-<td><p>vLLM <code class="docutils literal notranslate"><span class="pre">ServerArgs</span></code> 字段覆盖。优先级最高，覆盖 <code class="docutils literal notranslate"><span class="pre">--vllm-*</span></code> CLI 参数和模型级默认值。</p></td>
+<td><p>vLLM <code class="docutils literal notranslate"><span class="pre">EngineArgs</span></code> 字段覆盖。优先级最高，覆盖 <code class="docutils literal notranslate"><span class="pre">--vllm-*</span></code> CLI 参数和模型级默认值。</p></td>
 </tr>
 </tbody>
 </table>
@@ -654,7 +660,7 @@
 <li><p>独立扩展 prefill 和 decode 的容量</p></li>
 </ul>
 <blockquote>
-<div><p><strong>注意：</strong> PD 分离使用 vllm-router (vllm-router)，并设置 <code class="docutils literal notranslate"><span class="pre">pd_disaggregation=True</span></code>。</p>
+<div><p><strong>注意：</strong> PD 分离使用 vllm-router，并设置 <code class="docutils literal notranslate"><span class="pre">pd_disaggregation=True</span></code>。</p>
 </div></blockquote>
 </section>
 <section id="id8">
@@ -699,18 +705,27 @@
 <span class="kn">from</span><span class="w"> </span><span class="nn">vime.utils.http_utils</span><span class="w"> </span><span class="kn">import</span> <span class="n">post</span>
 
 <span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">my_generate</span><span class="p">(</span><span class="n">args</span><span class="p">,</span> <span class="n">sample</span><span class="p">,</span> <span class="n">sampling_params</span><span class="p">):</span>
-    <span class="c1"># 路由到 actor 模型（默认）</span>
-    <span class="n">actor_url</span> <span class="o">=</span> <span class="n">get_model_url</span><span class="p">(</span><span class="n">args</span><span class="p">,</span> <span class="s2">&quot;actor&quot;</span><span class="p">,</span> <span class="s2">&quot;/generate&quot;</span><span class="p">)</span>
-    <span class="n">output</span> <span class="o">=</span> <span class="k">await</span> <span class="n">post</span><span class="p">(</span><span class="n">actor_url</span><span class="p">,</span> <span class="p">{</span><span class="s2">&quot;text&quot;</span><span class="p">:</span> <span class="n">sample</span><span class="o">.</span><span class="n">prompt</span><span class="p">,</span> <span class="s2">&quot;sampling_params&quot;</span><span class="p">:</span> <span class="n">sampling_params</span><span class="p">})</span>
-    
+    <span class="c1"># 路由到 actor 模型（默认端点为 /inference/v1/generate）</span>
+    <span class="n">actor_url</span> <span class="o">=</span> <span class="n">get_model_url</span><span class="p">(</span><span class="n">args</span><span class="p">,</span> <span class="s2">&quot;actor&quot;</span><span class="p">)</span>
+    <span class="n">output</span> <span class="o">=</span> <span class="k">await</span> <span class="n">post</span><span class="p">(</span><span class="n">actor_url</span><span class="p">,</span> <span class="p">{</span>
+        <span class="s2">&quot;model&quot;</span><span class="p">:</span> <span class="n">args</span><span class="o">.</span><span class="n">hf_checkpoint</span><span class="p">,</span>
+        <span class="s2">&quot;token_ids&quot;</span><span class="p">:</span> <span class="n">sample</span><span class="o">.</span><span class="n">tokens</span><span class="p">,</span>
+        <span class="s2">&quot;sampling_params&quot;</span><span class="p">:</span> <span class="p">{</span><span class="s2">&quot;max_tokens&quot;</span><span class="p">:</span> <span class="mi">1024</span><span class="p">,</span> <span class="s2">&quot;temperature&quot;</span><span class="p">:</span> <span class="mf">1.0</span><span class="p">,</span> <span class="s2">&quot;top_p&quot;</span><span class="p">:</span> <span class="mf">1.0</span><span class="p">,</span> <span class="s2">&quot;logprobs&quot;</span><span class="p">:</span> <span class="mi">1</span><span class="p">},</span>
+    <span class="p">})</span>
+    <span class="c1"># output[&quot;choices&quot;][0] 含 token_ids、logprobs.content[i].logprob 及 finish_reason</span>
+
     <span class="c1"># 路由到 reference 模型</span>
-    <span class="n">ref_url</span> <span class="o">=</span> <span class="n">get_model_url</span><span class="p">(</span><span class="n">args</span><span class="p">,</span> <span class="s2">&quot;ref&quot;</span><span class="p">,</span> <span class="s2">&quot;/generate&quot;</span><span class="p">)</span>
-    <span class="n">ref_output</span> <span class="o">=</span> <span class="k">await</span> <span class="n">post</span><span class="p">(</span><span class="n">ref_url</span><span class="p">,</span> <span class="p">{</span><span class="s2">&quot;text&quot;</span><span class="p">:</span> <span class="n">sample</span><span class="o">.</span><span class="n">prompt</span><span class="p">,</span> <span class="s2">&quot;sampling_params&quot;</span><span class="p">:</span> <span class="n">sampling_params</span><span class="p">})</span>
-    
+    <span class="n">ref_url</span> <span class="o">=</span> <span class="n">get_model_url</span><span class="p">(</span><span class="n">args</span><span class="p">,</span> <span class="s2">&quot;ref&quot;</span><span class="p">)</span>
+    <span class="n">ref_output</span> <span class="o">=</span> <span class="k">await</span> <span class="n">post</span><span class="p">(</span><span class="n">ref_url</span><span class="p">,</span> <span class="p">{</span>
+        <span class="s2">&quot;model&quot;</span><span class="p">:</span> <span class="n">args</span><span class="o">.</span><span class="n">hf_checkpoint</span><span class="p">,</span>
+        <span class="s2">&quot;token_ids&quot;</span><span class="p">:</span> <span class="n">sample</span><span class="o">.</span><span class="n">tokens</span><span class="p">,</span>
+        <span class="s2">&quot;sampling_params&quot;</span><span class="p">:</span> <span class="p">{</span><span class="s2">&quot;max_tokens&quot;</span><span class="p">:</span> <span class="mi">1024</span><span class="p">,</span> <span class="s2">&quot;temperature&quot;</span><span class="p">:</span> <span class="mf">1.0</span><span class="p">,</span> <span class="s2">&quot;top_p&quot;</span><span class="p">:</span> <span class="mf">1.0</span><span class="p">,</span> <span class="s2">&quot;logprobs&quot;</span><span class="p">:</span> <span class="mi">1</span><span class="p">},</span>
+    <span class="p">})</span>
+
     <span class="c1"># 路由到 reward 模型（如 OpenAI 兼容 API）</span>
     <span class="n">reward_url</span> <span class="o">=</span> <span class="n">get_model_url</span><span class="p">(</span><span class="n">args</span><span class="p">,</span> <span class="s2">&quot;reward&quot;</span><span class="p">,</span> <span class="s2">&quot;/v1/chat/completions&quot;</span><span class="p">)</span>
     <span class="n">reward_output</span> <span class="o">=</span> <span class="k">await</span> <span class="n">post</span><span class="p">(</span><span class="n">reward_url</span><span class="p">,</span> <span class="p">{</span><span class="o">...</span><span class="p">})</span>
-    
+
     <span class="o">...</span>
 </pre></div>
 </div>
@@ -755,9 +770,9 @@
 </pre></div>
 </div>
 </section>
-<section id="serverargs">
-<h3>6. 按组覆盖 ServerArgs<a class="headerlink" href="#serverargs" title="链接到此标题。">#</a></h3>
-<p>使用 <code class="docutils literal notranslate"><span class="pre">overrides</span></code> 将 vLLM <code class="docutils literal notranslate"><span class="pre">ServerArgs</span></code> 字段应用到特定服务器组，而不影响其他组：</p>
+<section id="engineargs">
+<h3>6. 按组覆盖 EngineArgs<a class="headerlink" href="#engineargs" title="链接到此标题。">#</a></h3>
+<p>使用 <code class="docutils literal notranslate"><span class="pre">overrides</span></code> 将 vLLM <code class="docutils literal notranslate"><span class="pre">EngineArgs</span></code> 字段应用到特定服务器组，而不影响其他组：</p>
 <div class="highlight-yaml notranslate"><div class="highlight"><pre><span></span><span class="nt">vllm</span><span class="p">:</span>
 <span class="w">  </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">actor</span>
 <span class="w">    </span><span class="nt">server_groups</span><span class="p">:</span>
@@ -780,7 +795,7 @@
 </section>
 <section id="vllm">
 <h3>7. 独立 vLLM 启动器<a class="headerlink" href="#vllm" title="链接到此标题。">#</a></h3>
-<p>虽然 <code class="docutils literal notranslate"><span class="pre">--vllm-config</span></code> 是为 vime 的训练流水线设计的，但它也可以作为纯推理场景的强大启动器，通过 <code class="docutils literal notranslate"><span class="pre">--rollout-external</span></code> 模式或配置 vime 仅关注推理服务。</p>
+<p>虽然 <code class="docutils literal notranslate"><span class="pre">--vllm-config</span></code> 是为 vime 的训练流水线设计的，但它也可以作为纯推理场景的强大启动器，通过外部 engine 地址或配置 vime 仅关注推理服务。</p>
 <p><strong>使用预启动的外部引擎：</strong></p>
 <p>对于复杂的生产部署，你可能希望独立预启动 vLLM 引擎，然后将其连接到 vime：</p>
 <div class="highlight-bash notranslate"><div class="highlight"><pre><span></span><span class="c1"># 步骤 1：外部启动 vLLM 引擎</span>
@@ -789,14 +804,18 @@ vllm<span class="w"> </span>serve<span class="w"> </span>/path/to/model<span cla
 
 <span class="c1"># 步骤 2：将 vime 连接到外部引擎</span>
 python<span class="w"> </span>train.py<span class="w"> </span><span class="se">\</span>
-<span class="w">  </span>--rollout-external<span class="w"> </span><span class="se">\</span>
 <span class="w">  </span>--rollout-external-engine-addrs<span class="w"> </span>host1:10090<span class="w"> </span>host2:10091<span class="w"> </span><span class="se">\</span>
 <span class="w">  </span>...
 </pre></div>
 </div>
+<p>vime 会请求每个外部引擎的 <code class="docutils literal notranslate"><span class="pre">/server_info</span></code>，自动推断
+<code class="docutils literal notranslate"><span class="pre">rollout_num_gpus</span></code>、单个 engine 的 GPU 数、vLLM 并行参数，以及
+prefill/decode worker 类型。如果没有提供 <code class="docutils literal notranslate"><span class="pre">--vllm-router-ip/--vllm-router-port</span></code>，
+vime 会自己启动 router，并把这些外部引擎注册进去。</p>
 <blockquote>
-<div><p><strong>注意：</strong> <code class="docutils literal notranslate"><span class="pre">--vllm-config</span></code> 和 <code class="docutils literal notranslate"><span class="pre">--rollout-external</span></code> 互斥。当你希望 vime 管理完整的引擎生命周期时，使用 <code class="docutils literal notranslate"><span class="pre">--vllm-config</span></code>；当引擎已预部署时，使用 <code class="docutils literal notranslate"><span class="pre">--rollout-external</span></code>。</p>
+<div><p><strong>注意：</strong> <code class="docutils literal notranslate"><span class="pre">--vllm-config</span></code> 和 <code class="docutils literal notranslate"><span class="pre">--rollout-external-engine-addrs</span></code> 互斥。当你希望 vime 管理完整的引擎生命周期时，使用 <code class="docutils literal notranslate"><span class="pre">--vllm-config</span></code>；当引擎已预部署时，使用 <code class="docutils literal notranslate"><span class="pre">--rollout-external-engine-addrs</span></code>。</p>
 </div></blockquote>
+<p>关于 external engine 的选择、update from disk 和 delta disk transport，见 <a class="reference internal" href="external-rollout-engines.html"><span class="std std-doc">External Rollout Engines 配置路线图</span></a>。</p>
 </section>
 </section>
 <hr class="docutils" />
@@ -858,7 +877,7 @@ python<span class="w"> </span>train.py<span class="w"> </span><span class="se">\
 <tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">--prefill-num-servers</span></code></p></td>
 <td><p>PD 分离通过 YAML 中的 <code class="docutils literal notranslate"><span class="pre">server_groups</span></code> 配置</p></td>
 </tr>
-<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">--rollout-external</span></code></p></td>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">--rollout-external-engine-addrs</span></code></p></td>
 <td><p>外部引擎有自己的拓扑；config 在内部管理生命周期</p></td>
 </tr>
 </tbody>
@@ -921,27 +940,29 @@ python<span class="w"> </span>train.py<span class="w"> </span><span class="se">\
 <span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">generate_with_models</span><span class="p">(</span><span class="n">args</span><span class="p">,</span> <span class="n">sample</span><span class="p">,</span> <span class="n">sampling_params</span><span class="p">):</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;使用 actor 生成，用 reward 模型打分，与 reference 比较。&quot;&quot;&quot;</span>
     
-    <span class="c1"># 从 actor 生成</span>
-    <span class="n">actor_url</span> <span class="o">=</span> <span class="n">get_model_url</span><span class="p">(</span><span class="n">args</span><span class="p">,</span> <span class="s2">&quot;actor&quot;</span><span class="p">,</span> <span class="s2">&quot;/generate&quot;</span><span class="p">)</span>
+    <span class="c1"># 从 actor 生成（默认端点为 /inference/v1/generate）</span>
+    <span class="n">actor_url</span> <span class="o">=</span> <span class="n">get_model_url</span><span class="p">(</span><span class="n">args</span><span class="p">,</span> <span class="s2">&quot;actor&quot;</span><span class="p">)</span>
     <span class="n">actor_output</span> <span class="o">=</span> <span class="k">await</span> <span class="n">post</span><span class="p">(</span><span class="n">actor_url</span><span class="p">,</span> <span class="p">{</span>
-        <span class="s2">&quot;text&quot;</span><span class="p">:</span> <span class="n">sample</span><span class="o">.</span><span class="n">prompt</span><span class="p">,</span>
-        <span class="s2">&quot;sampling_params&quot;</span><span class="p">:</span> <span class="n">sampling_params</span><span class="p">,</span>
-        <span class="s2">&quot;return_logprob&quot;</span><span class="p">:</span> <span class="kc">True</span><span class="p">,</span>
+        <span class="s2">&quot;model&quot;</span><span class="p">:</span> <span class="n">args</span><span class="o">.</span><span class="n">hf_checkpoint</span><span class="p">,</span>
+        <span class="s2">&quot;token_ids&quot;</span><span class="p">:</span> <span class="n">sample</span><span class="o">.</span><span class="n">tokens</span><span class="p">,</span>
+        <span class="s2">&quot;sampling_params&quot;</span><span class="p">:</span> <span class="p">{</span><span class="s2">&quot;max_tokens&quot;</span><span class="p">:</span> <span class="mi">1024</span><span class="p">,</span> <span class="s2">&quot;temperature&quot;</span><span class="p">:</span> <span class="mf">1.0</span><span class="p">,</span> <span class="s2">&quot;top_p&quot;</span><span class="p">:</span> <span class="mf">1.0</span><span class="p">,</span> <span class="s2">&quot;logprobs&quot;</span><span class="p">:</span> <span class="mi">1</span><span class="p">},</span>
     <span class="p">})</span>
-    
-    <span class="c1"># 获取 reference logprobs 用于 KL penalty</span>
-    <span class="n">ref_url</span> <span class="o">=</span> <span class="n">get_model_url</span><span class="p">(</span><span class="n">args</span><span class="p">,</span> <span class="s2">&quot;ref&quot;</span><span class="p">,</span> <span class="s2">&quot;/generate&quot;</span><span class="p">)</span>
+    <span class="n">response_ids</span> <span class="o">=</span> <span class="n">actor_output</span><span class="p">[</span><span class="s2">&quot;choices&quot;</span><span class="p">][</span><span class="mi">0</span><span class="p">][</span><span class="s2">&quot;token_ids&quot;</span><span class="p">]</span>
+
+    <span class="c1"># 获取 reference logprobs 用于 KL penalty。max_tokens=1 + prompt_logprobs 对提交的</span>
+    <span class="c1"># token_ids 打分；从顶层 &quot;prompt_logprobs&quot; 字段读取。</span>
+    <span class="n">ref_url</span> <span class="o">=</span> <span class="n">get_model_url</span><span class="p">(</span><span class="n">args</span><span class="p">,</span> <span class="s2">&quot;ref&quot;</span><span class="p">)</span>
     <span class="n">ref_output</span> <span class="o">=</span> <span class="k">await</span> <span class="n">post</span><span class="p">(</span><span class="n">ref_url</span><span class="p">,</span> <span class="p">{</span>
-        <span class="s2">&quot;text&quot;</span><span class="p">:</span> <span class="n">sample</span><span class="o">.</span><span class="n">prompt</span> <span class="o">+</span> <span class="n">actor_output</span><span class="p">[</span><span class="s2">&quot;text&quot;</span><span class="p">],</span>
-        <span class="s2">&quot;sampling_params&quot;</span><span class="p">:</span> <span class="p">{</span><span class="s2">&quot;max_new_tokens&quot;</span><span class="p">:</span> <span class="mi">0</span><span class="p">,</span> <span class="s2">&quot;temperature&quot;</span><span class="p">:</span> <span class="mi">0</span><span class="p">},</span>
-        <span class="s2">&quot;return_logprob&quot;</span><span class="p">:</span> <span class="kc">True</span><span class="p">,</span>
+        <span class="s2">&quot;model&quot;</span><span class="p">:</span> <span class="n">args</span><span class="o">.</span><span class="n">hf_checkpoint</span><span class="p">,</span>
+        <span class="s2">&quot;token_ids&quot;</span><span class="p">:</span> <span class="n">sample</span><span class="o">.</span><span class="n">tokens</span> <span class="o">+</span> <span class="n">response_ids</span><span class="p">,</span>
+        <span class="s2">&quot;sampling_params&quot;</span><span class="p">:</span> <span class="p">{</span><span class="s2">&quot;max_tokens&quot;</span><span class="p">:</span> <span class="mi">1</span><span class="p">,</span> <span class="s2">&quot;temperature&quot;</span><span class="p">:</span> <span class="mf">0.0</span><span class="p">,</span> <span class="s2">&quot;prompt_logprobs&quot;</span><span class="p">:</span> <span class="mi">1</span><span class="p">},</span>
     <span class="p">})</span>
-    
-    <span class="c1"># 用 reward 模型打分</span>
+
+    <span class="c1"># 用 reward 模型打分（OpenAI 兼容）</span>
     <span class="n">reward_url</span> <span class="o">=</span> <span class="n">get_model_url</span><span class="p">(</span><span class="n">args</span><span class="p">,</span> <span class="s2">&quot;reward&quot;</span><span class="p">,</span> <span class="s2">&quot;/v1/chat/completions&quot;</span><span class="p">)</span>
     <span class="n">reward_output</span> <span class="o">=</span> <span class="k">await</span> <span class="n">post</span><span class="p">(</span><span class="n">reward_url</span><span class="p">,</span> <span class="p">{</span>
         <span class="s2">&quot;model&quot;</span><span class="p">:</span> <span class="s2">&quot;reward&quot;</span><span class="p">,</span>
-        <span class="s2">&quot;messages&quot;</span><span class="p">:</span> <span class="p">[{</span><span class="s2">&quot;role&quot;</span><span class="p">:</span> <span class="s2">&quot;user&quot;</span><span class="p">,</span> <span class="s2">&quot;content&quot;</span><span class="p">:</span> <span class="n">sample</span><span class="o">.</span><span class="n">prompt</span> <span class="o">+</span> <span class="n">actor_output</span><span class="p">[</span><span class="s2">&quot;text&quot;</span><span class="p">]}],</span>
+        <span class="s2">&quot;messages&quot;</span><span class="p">:</span> <span class="p">[{</span><span class="s2">&quot;role&quot;</span><span class="p">:</span> <span class="s2">&quot;user&quot;</span><span class="p">,</span> <span class="s2">&quot;content&quot;</span><span class="p">:</span> <span class="n">sample</span><span class="o">.</span><span class="n">prompt</span><span class="p">}],</span>
     <span class="p">})</span>
     
     <span class="c1"># ... 处理输出并返回 Sample</span>
@@ -969,7 +990,7 @@ python<span class="w"> </span>train.py<span class="w"> </span><span class="se">\
 </section>
 <section id="q-vllm-config">
 <h3>Q: 可以不训练，只用 <code class="docutils literal notranslate"><span class="pre">--vllm-config</span></code> 做推理吗？<a class="headerlink" href="#q-vllm-config" title="链接到此标题。">#</a></h3>
-<p>虽然 <code class="docutils literal notranslate"><span class="pre">--vllm-config</span></code> 是为 vime 的训练循环设计的，但你可以通过配置仅 rollout 的运行来实现纯推理场景。对于完全独立的 vLLM 推理服务，建议直接使用 vLLM 原生的 <code class="docutils literal notranslate"><span class="pre">launch_server</span></code>，或使用 <code class="docutils literal notranslate"><span class="pre">--rollout-external</span></code> 模式连接预部署的引擎。</p>
+<p>虽然 <code class="docutils literal notranslate"><span class="pre">--vllm-config</span></code> 是为 vime 的训练循环设计的，但你可以通过配置仅 rollout 的运行来实现纯推理场景。对于完全独立的 vLLM 推理服务，建议直接使用 vLLM 原生的 <code class="docutils literal notranslate"><span class="pre">_run_vllm_server</span></code>，或使用 <code class="docutils literal notranslate"><span class="pre">--rollout-external-engine-addrs</span></code> 连接预部署的引擎。</p>
 </section>
 <section id="q-vllm-config-prefill-num-servers">
 <h3>Q: <code class="docutils literal notranslate"><span class="pre">--vllm-config</span></code> 和 <code class="docutils literal notranslate"><span class="pre">--prefill-num-servers</span></code> 是什么关系？<a class="headerlink" href="#q-vllm-config-prefill-num-servers" title="链接到此标题。">#</a></h3>
@@ -990,12 +1011,12 @@ python<span class="w"> </span>train.py<span class="w"> </span><span class="se">\
                   
 <div class="prev-next-area">
     <a class="left-prev"
-       href="pd-disaggregation.html"
+       href="delta-weight-sync.html"
        title="上一页">
       <i class="fa-solid fa-angle-left"></i>
       <div class="prev-next-info">
         <p class="prev-next-subtitle">上一页</p>
-        <p class="prev-next-title">PD 分离</p>
+        <p class="prev-next-title">Delta 权重同步</p>
       </div>
     </a>
     <a class="right-next"
@@ -1041,7 +1062,7 @@ python<span class="w"> </span>train.py<span class="w"> </span><span class="se">\
 <li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#id8">3. 多模型服务</a></li>
 <li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#id9">4. 多模型 + PD 分离</a></li>
 <li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#gpu">5. 占位组用于 GPU 预留</a></li>
-<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#serverargs">6. 按组覆盖 ServerArgs</a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#engineargs">6. 按组覆盖 EngineArgs</a></li>
 <li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#vllm">7. 独立 vLLM 启动器</a></li>
 </ul>
 </li>
@@ -1095,7 +1116,7 @@ python<span class="w"> </span>train.py<span class="w"> </span><span class="se">\
   
   <div class="footer-item">
     <p class="last-updated">
-  最后更新于 2026 年 06 月 25 日.
+  最后更新于 2026 年 06 月 29 日.
   <br/>
 </p>
   </div>

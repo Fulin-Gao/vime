@@ -58,7 +58,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1"/>
   <meta name="docsearch:language" content="en"/>
   <meta name="docsearch:version" content="0.0.1" />
-    <meta name="docbuild:last-update" content="Jun 25, 2026"/>
+    <meta name="docbuild:last-update" content="Jun 29, 2026"/>
   </head>
   
   
@@ -165,13 +165,19 @@
 <p aria-level="2" class="caption" role="heading"><span class="caption-text">MoE</span></p>
 <ul class="nav bd-sidenav">
 <li class="toctree-l1"><a class="reference internal" href="../examples/qwen3-30B-A3B.html">Qwen3-30B-A3B with 8xH100</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../examples/glm5.2-744B-A40B.html">GLM-5.2 744B-A40B with 256xH100</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../examples/glm4.7-355B-A32B.html">GLM-4.7 with 64xH100</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../examples/deepseek-r1.html">DeepSeek R1 with 128xH100</a></li>
 </ul>
 <p aria-level="2" class="caption" role="heading"><span class="caption-text">Advanced Features</span></p>
 <ul class="nav bd-sidenav">
 <li class="toctree-l1"><a class="reference internal" href="../advanced/speculative-decoding.html">Speculative Decoding</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../advanced/reproducibility.html">Reproducibility</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../advanced/fault-tolerance.html">Fault Tolerance</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../advanced/observability.html">Observability</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../advanced/pd-disaggregation.html">PD Disaggregation</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../advanced/external-rollout-engines.html">External Rollout Engines Roadmap</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../advanced/delta-weight-sync.html">Delta Weight Sync</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../advanced/vllm-config.html">vLLM Config: Advanced Engine Deployment</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../advanced/megatron-config.html">Megatron Config: Role-Based Training Overrides</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../advanced/arch-support-beyond-megatron.html">Supporting Model Architectures Beyond Megatron-LM</a></li>
@@ -768,7 +774,7 @@ vime uses <code class="docutils literal notranslate"><span class="pre">vllm-rout
 <h2>Feature Introduction<a class="headerlink" href="#feature-introduction" title="Link to this heading">#</a></h2>
 <section id="colocated-actor-and-rollout">
 <h3>Colocated Actor and Rollout<a class="headerlink" href="#colocated-actor-and-rollout" title="Link to this heading">#</a></h3>
-<p>Under the default configuration, training (Actor) and inference (Rollout) resources are specified separately. Ray allocates <code class="docutils literal notranslate"><span class="pre">actor_num_nodes</span> <span class="pre">*</span> <span class="pre">actor_num_gpus_per_node</span></code> GPUs to the training part and <code class="docutils literal notranslate"><span class="pre">rollout_num_gpus</span></code> GPUs to inference, that is, training and inference are separated.</p>
+<p>Under the default configuration, training (Actor) and inference (Rollout) resources are specified separately. Ray allocates <code class="docutils literal notranslate"><span class="pre">actor_num_nodes</span> <span class="pre">*</span> <span class="pre">actor_num_gpus_per_node</span></code> GPUs to the training part and <code class="docutils literal notranslate"><span class="pre">rollout_num_gpus</span></code> GPUs to inference, that is, training and inference are separated. When <code class="docutils literal notranslate"><span class="pre">--rollout-num-gpus</span></code> is explicitly set to <code class="docutils literal notranslate"><span class="pre">0</span></code>, vime still parses vLLM arguments and launches the router, but does not launch local vLLM servers.</p>
 <p><strong>Standard (Disaggregated) Configuration</strong>:</p>
 <div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>ray<span class="w"> </span>job<span class="w"> </span>submit<span class="w"> </span>...<span class="w"> </span><span class="se">\</span>
 <span class="w">   </span>--<span class="w"> </span>python3<span class="w"> </span>train.py<span class="w"> </span><span class="se">\</span>
@@ -780,7 +786,7 @@ vime uses <code class="docutils literal notranslate"><span class="pre">vllm-rout
 </div>
 <p>In the above configuration, Actor uses 4 cards, and Rollout also uses 4 cards, running in parallel.</p>
 <p><strong>Training-Inference Integration (Colocated) Configuration</strong>:
-To deploy training and inference on the same group of GPUs, please add the <code class="docutils literal notranslate"><span class="pre">--colocate</span></code> parameter. After enabling, <code class="docutils literal notranslate"><span class="pre">--rollout-num-gpus</span></code> will be ignored to make the number of cards for training and inference equal.</p>
+To deploy training and inference on the same group of GPUs, please add the <code class="docutils literal notranslate"><span class="pre">--colocate</span></code> parameter. By default, this makes the number of cards for training and inference equal. You can explicitly set a different positive <code class="docutils literal notranslate"><span class="pre">--rollout-num-gpus</span></code>, for example to use more rollout GPUs than actor GPUs; the extra GPUs are used as rollout-only resources. If <code class="docutils literal notranslate"><span class="pre">--rollout-num-gpus</span> <span class="pre">0</span></code> is set explicitly, vime launches only the router and no local vLLM servers.</p>
 <div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>ray<span class="w"> </span>job<span class="w"> </span>submit<span class="w"> </span>...<span class="w"> </span><span class="se">\</span>
 <span class="w">   </span>--<span class="w"> </span>python3<span class="w"> </span>train.py<span class="w"> </span><span class="se">\</span>
 <span class="w">   </span>--actor-num-nodes<span class="w"> </span><span class="m">1</span><span class="w"> </span><span class="se">\</span>
@@ -1021,6 +1027,11 @@ export NVSHMEM_BOOTSTRAP_UID_SOCK_IFNAME=$(ip -o -4 addr show | awk &#39;$4 ~ /^
 <p>vime has been deeply optimized for distributed training of large-scale Mixture of Experts (MoE) models. We provide some end-to-end training cases for reference:</p>
 <ul class="simple">
 <li><p><a class="reference internal" href="../examples/qwen3-30B-A3B.html"><span class="std std-doc">Example: Qwen3-30B-A3B with 8xH100</span></a></p></li>
+<li><p><a class="reference internal" href="../examples/glm4.7-30B-A3B.html"><span class="std std-doc">Example: 8xH100 Training GLM-4.7-Flash</span></a></p></li>
+<li><p><a class="reference internal" href="../examples/glm5.2-744B-A40B.html"><span class="std std-doc">Example: 32xH100 Training GLM-5.2</span></a></p></li>
+<li><p><a class="reference internal" href="../examples/glm4.7-355B-A32B.html"><span class="std std-doc">Example: 64xH100 Training GLM-4.7</span></a></p></li>
+<li><p><a class="reference internal" href="../examples/deepseek-r1.html"><span class="std std-doc">Example: 128xH100 Training DeepSeek-R1</span></a></p></li>
+<li><p>Scripts such as <code class="docutils literal notranslate"><span class="pre">scripts/run_qwen3_30b_a3b.py</span></code> and <code class="docutils literal notranslate"><span class="pre">scripts/run_glm45_355b_a32b.py</span></code> also support multi-node training. Their documentation is still being expanded.</p></li>
 </ul>
 </section>
 </section>
@@ -1145,7 +1156,7 @@ By Vime Team
   
   <div class="footer-item">
     <p class="last-updated">
-  Last updated on Jun 25, 2026.
+  Last updated on Jun 29, 2026.
   <br/>
 </p>
   </div>
