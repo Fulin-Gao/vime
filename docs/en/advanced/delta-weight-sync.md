@@ -1,5 +1,7 @@
 # Delta Weight Sync
 
+> **Note:** `--update-weight-mode=delta` is not yet extensively verified on vime + vLLM and is disabled for now; use `--update-weight-mode=full`.
+
 - [Why](#why)
 - [Quick Start](#quick-start)
 - [Mode vs Transport](#mode-vs-transport)

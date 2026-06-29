@@ -1,5 +1,7 @@
 # Delta 权重同步
 
+> **注意：** `--update-weight-mode=delta` 在 vime + vLLM 上暂未经过大量验证、当前禁用，请改用 `--update-weight-mode=full`。
+
 - [背景](#背景)
 - [快速开始](#快速开始)
 - [同步模式与传输方式](#同步模式与传输方式)
