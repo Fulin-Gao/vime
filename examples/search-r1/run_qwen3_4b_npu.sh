@@ -57,7 +57,7 @@ export TRANSFORMERS_VERBOSITY=error
 export RUST_LOG=vllm_router_rs=warn
 
 NUM_NPUS=16
-source "${VIME_DIR}/scripts/models/qwen2.5-3B.sh"
+source "${VIME_DIR}/scripts/models/qwen3-4B-Instruct-2507.sh"
 
 CKPT_ARGS=(
    --hf-checkpoint /path/to/Qwen3-4B-Instruct-2507
