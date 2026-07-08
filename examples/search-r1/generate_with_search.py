@@ -191,7 +191,7 @@ async def generate(args, sample: Sample, sampling_params) -> Sample:
             "token_ids": full_token_ids,
             "sampling_params": inference_sampling_params,
         }
-        if hasattr(args, 'hf_checkpoint'):
+        if hasattr(args, "hf_checkpoint"):
             payload["model"] = args.hf_checkpoint
 
         output = await post(url, payload)
@@ -211,7 +211,11 @@ async def generate(args, sample: Sample, sampling_params) -> Sample:
         # Decode text from token_ids
         skip_sp = inference_sampling_params.get("skip_special_tokens")
         skip_decode = True if skip_sp is None else bool(skip_sp)
-        cur_response = state.tokenizer.decode(cur_response_token_ids, skip_special_tokens=skip_decode) if cur_response_token_ids else ""
+        cur_response = (
+            state.tokenizer.decode(cur_response_token_ids, skip_special_tokens=skip_decode)
+            if cur_response_token_ids
+            else ""
+        )
 
         # Extract log probs if enabled
         if SEARCH_R1_CONFIGS["return_logprob"]:
