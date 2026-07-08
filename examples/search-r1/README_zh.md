@@ -14,15 +14,15 @@ Search-R1 示例提供了：
 
 ## 文件说明
 
-| 文件 | 描述 |
-|------|------|
-| `generate_with_search.py` | 主生成函数，支持多轮搜索 + 回答工具调用，以及奖励函数 |
-| `google_search_server.py` | 通过 serper.dev API 实现 Google 搜索后端 |
-| `local_search_server.py` | 本地搜索后端，封装检索服务 |
-| `qa_em_format.py` | 问答精确匹配评分，包含格式验证和检索正确性检查 |
-| `run_qwen2.5_3B.sh` | 训练启动脚本（NPU 8卡，Qwen2.5-3B，GRPO） |
+| 文件                                          | 描述 |
+|---------------------------------------------|------|
+| `generate_with_search.py`                   | 主生成函数，支持多轮搜索 + 回答工具调用，以及奖励函数 |
+| `google_search_server.py`                   | 通过 serper.dev API 实现 Google 搜索后端 |
+| `local_search_server.py`                    | 本地搜索后端，封装检索服务 |
+| `qa_em_format.py`                           | 问答精确匹配评分，包含格式验证和检索正确性检查 |
+| `run_qwen3_4b_npu.sh`                       | 训练启动脚本（NPU 8卡，Qwen3-4B-Instruct-2507，GRPO） |
 | `local_dense_retriever/retrieval_server.py` | 稠密检索服务器（FAISS + E5 模型） |
-| `local_dense_retriever/download.py` | 从 HuggingFace 下载 wiki-18 索引和语料库 |
+| `local_dense_retriever/download.py`         | 从 HuggingFace 下载 wiki-18 索引和语料库 |
 
 ---
 
@@ -105,13 +105,13 @@ python $WORK_DIR/scripts/data_process/qa_search_test_merge.py \
 **方式 A：在线自动下载**
 
 ```bash
-hf download Qwen/Qwen2.5-3B-Instruct --local-dir /path/to/Qwen2.5-3B-Instruct
+hf download Qwen/Qwen3-4B-Instruct-2507 --local-dir /path/to/Qwen3-4B-Instruct-2507
 ```
 
 **方式 B：离线手动下载**
 
-- 从 Hugging Face 仓库下载完整模型权重：[Qwen/Qwen2.5-3B-Instruct](https://huggingface.co/Qwen/Qwen2.5-3B-Instruct)
-- 将所有下载的模型文件上传到目标目录 `MODEL_DIR=/path/to/Qwen2.5-3B-Instruct`
+- 从 Hugging Face 仓库下载完整模型权重：[Qwen/Qwen3-4B-Instruct-2507](https://huggingface.co/Qwen/Qwen3-4B-Instruct-2507)
+- 将所有下载的模型文件上传到目标目录 `MODEL_DIR=/path/to/Qwen3-4B-Instruct-2507`
 
 #### 2.3 本地检索服务器（可选）
 
@@ -162,7 +162,7 @@ SEARCH_R1_CONFIGS = {
     # ============== 通用配置 ==============
     "max_turns": 2,
     "topk": 3,
-    "search_concurrency": 256,
+    "search_concurrency": 8,
 
     # ============== 搜索后端选择 ==============
     "search_backend": "local",  # 选项："local" 或 "google"
@@ -230,5 +230,5 @@ python /root/vime/examples/search-r1/local_dense_retriever/retrieval_server.py \
 ```bash
 cd /root/vime
 # 替换模型和数据加载/保存路径
-bash examples/search-r1/run_qwen2.5_3B.sh
+bash examples/search-r1/run_qwen3_4b_npu.sh
 ```

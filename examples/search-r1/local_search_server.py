@@ -26,7 +26,7 @@ async def local_search(
     search_url: str,
     query: str,
     top_k: int = 5,
-    timeout: int = 600,
+    timeout: int = 1200,
     proxy: str | None = None,
 ) -> list[dict]:
     """

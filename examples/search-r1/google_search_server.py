@@ -129,7 +129,7 @@ async def google_search(api_key, query, top_k=5, timeout: int = 60, proxy=None, 
                     }
                 )
     else:
-        links = [item.get("link", "") for item in items if "link" in item]
+        links = [item.get("link", "") for item in items]
         web_contents = await fetch_all(links)
         contexts = []
         for i, item in enumerate(items):

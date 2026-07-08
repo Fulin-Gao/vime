@@ -144,7 +144,7 @@ def extract_information_blocks(text: str) -> list[str]:
     return [match.strip() for match in matches]
 
 
-def is_retrieval_correct(text: str, golden_answers: list[str]) -> list[str]:
+def is_retrieval_correct(text: str, golden_answers: list[str]) -> bool:
     seqs = extract_information_blocks(text)
     for seq in seqs:
         for golden_answer in golden_answers:

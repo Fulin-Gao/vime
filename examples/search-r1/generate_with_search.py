@@ -7,7 +7,7 @@ import re
 
 from qa_em_format import compute_score_em
 
-from vime.rollout.vllm_rollout import GenerateState
+from vime.rollout.vllm_rollout import GenerateState, _build_inference_sampling_params
 from vime.utils.http_utils import post
 from vime.utils.types import Sample
 
@@ -16,7 +16,7 @@ SEARCH_R1_CONFIGS = {
     # ============== General Configuration ==============
     "max_turns": 2,
     "topk": 3,
-    "search_concurrency": 256,
+    "search_concurrency": 8,
     # ============== Search Backend Selection ==============
     "search_backend": "local",  # Options: "local" or "google"
     # ============== Local Search Configuration ==============
@@ -40,30 +40,6 @@ SEARCH_R1_CONFIGS = {
 
 
 SEMAPHORE = asyncio.Semaphore(SEARCH_R1_CONFIGS["search_concurrency"])
-
-
-def _build_inference_sampling_params(sampling_params: dict) -> dict:
-    """Map vllm-style sampling_params to vLLM /inference/v1/generate format."""
-    sp: dict = {
-        "max_tokens": sampling_params["max_new_tokens"],
-        "temperature": sampling_params["temperature"],
-        "top_p": sampling_params["top_p"],
-        "logprobs": 1,
-    }
-    tk = sampling_params.get("top_k")
-    if tk is not None and (tk > 0 or tk == -1):
-        sp["top_k"] = tk
-    if sampling_params.get("stop"):
-        sp["stop"] = sampling_params["stop"]
-        if sampling_params.get("no_stop_trim"):
-            sp["include_stop_str_in_output"] = True
-    if sampling_params.get("stop_token_ids"):
-        sp["stop_token_ids"] = sampling_params["stop_token_ids"]
-    if sampling_params.get("seed") is not None:
-        sp["seed"] = sampling_params["seed"]
-    if sampling_params.get("skip_special_tokens") is not None:
-        sp["skip_special_tokens"] = bool(sampling_params["skip_special_tokens"])
-    return sp
 
 
 def _passages2string(retrieval_result):
@@ -146,7 +122,7 @@ def postprocess_predictions(prediction: str):
     return action, content
 
 
-async def execute_predictions(prediction: str) -> str:
+async def execute_predictions(prediction: str) -> tuple[str, bool]:
     action, content = postprocess_predictions(prediction)
 
     if action == "search":

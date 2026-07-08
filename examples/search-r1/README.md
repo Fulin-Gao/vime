@@ -14,15 +14,15 @@ The Search-R1 example provides:
 
 ## Files
 
-| File | Description |
-|------|-------------|
-| `generate_with_search.py` | Main generation function with multi-turn search + answer tool-calling, and reward function |
-| `google_search_server.py` | Google Search backend via serper.dev API |
-| `local_search_server.py` | Local search backend that wraps the retrieval server |
-| `qa_em_format.py` | QA exact-match scoring with format validation and retrieval correctness check |
-| `run_qwen2.5_3B.sh` | Training launch script (NPU 8-card, Qwen2.5-3B, GRPO) |
-| `local_dense_retriever/retrieval_server.py` | Dense retriever server (FAISS + E5 model) |
-| `local_dense_retriever/download.py` | Download wiki-18 index and corpus from HuggingFace |
+| File                                        | Description                                                                        |
+|---------------------------------------------|------------------------------------------------------------------------------------|
+| `generate_with_search.py`                   | Main generation function with multi-turn search + answer tool-calling, and reward function |
+| `google_search_server.py`                   | Google Search backend via serper.dev API                                           |
+| `local_search_server.py`                    | Local search backend that wraps the retrieval server                               |
+| `qa_em_format.py`                           | QA exact-match scoring with format validation and retrieval correctness check      |
+| `run_qwen3_4b_npu.sh`                       | Training launch script (NPU 8-card, Qwen3-4B-Instruct-2507, GRPO)                                        |
+| `local_dense_retriever/retrieval_server.py` | Dense retriever server (FAISS + E5 model)                                          |
+| `local_dense_retriever/download.py`         | Download wiki-18 index and corpus from HuggingFace                                 |
 
 ---
 
@@ -107,13 +107,13 @@ python $WORK_DIR/scripts/data_process/qa_search_test_merge.py \
 **Option A: Online Auto Download**
 
 ```bash
-hf download Qwen/Qwen2.5-3B-Instruct --local-dir /path/to/Qwen2.5-3B-Instruct
+hf download Qwen/Qwen3-4B-Instruct- --local-dir /path/to/Qwen3-4B-Instruct-2507
 ```
 
 **Option B: Offline Manual Download**
 
-- Download full model weights from Hugging Face repo: [Qwen/Qwen2.5-3B-Instruct](https://huggingface.co/Qwen/Qwen2.5-3B-Instruct)
-- Upload all downloaded model files to your target directory `MODEL_DIR=/path/to/Qwen2.5-3B-Instruct`
+- Download full model weights from Hugging Face repo: [Qwen/Qwen3-4B-Instruct-2507](https://huggingface.co/Qwen/Qwen3-4B-Instruct-2507)
+- Upload all downloaded model files to your target directory `MODEL_DIR=/path/to/Qwen3-4B-Instruct-2507`
 
 #### 2.3 Local Retrieval Server (Optional)
 
@@ -164,7 +164,7 @@ SEARCH_R1_CONFIGS = {
     # ============== General Configuration ==============
     "max_turns": 2,
     "topk": 3,
-    "search_concurrency": 256,
+    "search_concurrency": 8,
 
     # ============== Search Backend Selection ==============
     "search_backend": "local",  # Options: "local" or "google"
@@ -232,5 +232,5 @@ python /root/vime/examples/search-r1/local_dense_retriever/retrieval_server.py \
 ```bash
 cd /root/vime
 # Replace the model and data loading/saving paths
-bash examples/search-r1/run_qwen2.5_3B.sh
+bash examples/search-r1/run_qwen3_4b_npu.sh
 ```
