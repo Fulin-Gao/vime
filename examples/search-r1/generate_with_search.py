@@ -16,7 +16,7 @@ SEARCH_R1_CONFIGS = {
     # ============== General Configuration ==============
     "max_turns": 2,
     "topk": 3,
-    "search_concurrency": 8,
+    "search_concurrency": 8,  # TODO: temporarily lowered for CPU-based Faiss retrieval; restore to 256 once NPU-accelerated Faiss is available
     # ============== Search Backend Selection ==============
     "search_backend": "local",  # Options: "local" or "google"
     # ============== Local Search Configuration ==============
