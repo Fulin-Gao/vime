@@ -85,10 +85,7 @@ def format_conversation_with_tools(
     if system_prompt:
         system_content = system_prompt
     else:
-        system_content = (
-            "You are a helpful assistant that solves "
-            "mathematical problems step by step."
-        )
+        system_content = "You are a helpful assistant that solves " "mathematical problems step by step."
 
     messages_to_render.append({"role": "system", "content": system_content})
 
@@ -283,11 +280,15 @@ async def generate(args, sample: Sample, sampling_params) -> Sample:
     if verbose:
         _sep = "═" * _LOG_WIDTH
         _prompt_display = (
-            "".join(m.get("content", "") for m in sample.prompt)
-            if isinstance(sample.prompt, list)
-            else sample.prompt
+            "".join(m.get("content", "") for m in sample.prompt) if isinstance(sample.prompt, list) else sample.prompt
         )
-        logger.debug("\n%s\n[ReTool LOG] prompt (%d tokens): %s\n%s", _sep, len(prompt_tokens_ids), _trunc(_prompt_display, 200), _sep)
+        logger.debug(
+            "\n%s\n[ReTool LOG] prompt (%d tokens): %s\n%s",
+            _sep,
+            len(prompt_tokens_ids),
+            _trunc(_prompt_display, 200),
+            _sep,
+        )
 
     # Add stop tags to sampling_params so the engine stops at tool/answer boundaries.
     # This is critical for keeping token/logp alignment when RETURN_LOGPROB is enabled.
@@ -330,7 +331,7 @@ async def generate(args, sample: Sample, sampling_params) -> Sample:
             "token_ids": current_token_ids,
             "sampling_params": current_inference_params,
         }
-        if hasattr(args, 'hf_checkpoint'):
+        if hasattr(args, "hf_checkpoint"):
             payload["model"] = args.hf_checkpoint
 
         # Log payload to wandb for debugging
@@ -371,7 +372,11 @@ async def generate(args, sample: Sample, sampling_params) -> Sample:
         # Decode text from token_ids
         skip_sp = current_inference_params.get("skip_special_tokens")
         skip_decode = True if skip_sp is None else bool(skip_sp)
-        cur_response = state.tokenizer.decode(cur_response_token_ids, skip_special_tokens=skip_decode) if cur_response_token_ids else ""
+        cur_response = (
+            state.tokenizer.decode(cur_response_token_ids, skip_special_tokens=skip_decode)
+            if cur_response_token_ids
+            else ""
+        )
 
         # Extract log probs if enabled
         if RETURN_LOGPROB:
@@ -402,7 +407,14 @@ async def generate(args, sample: Sample, sampling_params) -> Sample:
         # verbose: show what the model generated this turn
         if verbose:
             n_tok = len(cur_response_token_ids)
-            logger.debug("\n%s\n[Turn %d] model output (%d tok, finish=%s):\n  %s", "─" * _LOG_WIDTH, turn + 1, n_tok, finish_reason, _trunc(cur_response).replace("\n", "\n  "))
+            logger.debug(
+                "\n%s\n[Turn %d] model output (%d tok, finish=%s):\n  %s",
+                "─" * _LOG_WIDTH,
+                turn + 1,
+                n_tok,
+                finish_reason,
+                _trunc(cur_response).replace("\n", "\n  "),
+            )
 
         # Check length limit
         if finish_reason == "length":
@@ -471,10 +483,11 @@ async def generate(args, sample: Sample, sampling_params) -> Sample:
 
     if verbose:
         logger.debug(
-            "\n%s\n[ReTool LOG] finished | tool_calls=%d | "
-            "response_tokens=%d | finish=%s\n%s",
-            "═" * _LOG_WIDTH, tool_call_count,
-            len(response_token_ids), finish_reason,
+            "\n%s\n[ReTool LOG] finished | tool_calls=%d | " "response_tokens=%d | finish=%s\n%s",
+            "═" * _LOG_WIDTH,
+            tool_call_count,
+            len(response_token_ids),
+            finish_reason,
             "═" * _LOG_WIDTH,
         )
 
