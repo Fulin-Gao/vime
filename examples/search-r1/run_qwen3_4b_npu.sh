@@ -51,7 +51,6 @@ export TASK_QUEUE_ENABLE=1
 export RAY_DISABLE_SIGINT_OVERRIDE=1
 export RAY_EXPERIMENTAL_NOSET_ASCEND_RT_VISIBLE_DEVICES=1
 export LD_LIBRARY_PATH=/usr/local/Ascend/driver/lib64:/usr/local/Ascend/ascend-toolkit/latest/lib64:/usr/local/Ascend/nnal/atb/latest/atb/cxx_abi_1/lib:/usr/local/Ascend/cann/lib64:${LD_LIBRARY_PATH}
-export VLLM_USE_AOT_COMPILE=0
 export VLLM_DISABLE_COMPILE_CACHE=1
 export TRANSFORMERS_VERBOSITY=error
 export RUST_LOG=vllm_router_rs=warn
@@ -61,7 +60,7 @@ source "${VIME_DIR}/scripts/models/qwen3-4B-Instruct-2507.sh"
 
 CKPT_ARGS=(
    --hf-checkpoint /path/to/Qwen3-4B-Instruct-2507
-   --ref-load  /path/to/Qwen3-4B-Instruct-2507
+   --ref-load /path/to/Qwen3-4B-Instruct-2507
    --load /path/to/Qwen3-4B-Instruct-2507_vime_npu/
    --save /path/to/Qwen3-4B-Instruct-2507_vime_npu/
    --save-interval 100
