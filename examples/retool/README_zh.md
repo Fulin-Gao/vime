@@ -1,9 +1,7 @@
 # Retool：从 SFT 到 RL
-
 本示例 **(Retool)** 演示了如何使用 retool 功能进行带工具调用的语言模型生成。
 
 ## 概述
-
 Retool 示例提供了：
 
 - 沙盒环境中的安全 Python 代码执行
@@ -12,7 +10,6 @@ Retool 示例提供了：
 - 工具使用的奖励计算
 
 ## 文件说明
-
 - `generate_with_retool.py`：主生成函数，支持工具调用
 - `tool_sandbox.py`：工具执行与安全管理
 - `sft_data_processing.py`：处理 SFT 数据集
@@ -30,9 +27,7 @@ RL 奖励函数（`generate_with_retool.reward_func`）在数学正确性奖励�
 该设计鼓励模型在 RL 训练早期**探索工具调用**，同时避免模型通过偏好工具调用而非正确答案来进行奖励投机。随着训练推进和准确率提升，正确性奖励将占主导，工具奖励变为辅助项。
 
 ## 使用方法
-
 ### 1. 环境搭建
-
 ```bash
 git clone -b ascend https://github.com/vllm-project/vime.git
 cd vime
@@ -64,7 +59,6 @@ docker exec -it vime-npu bash
 ```
 
 ### 2. 下载
-
 ```bash
 # SFT 部分，你也可以直接使用后续模型进行 RL 而跳过 SFT。
 hf download --repo-type dataset JoeYing/ReTool-SFT  --local-dir /path/to/ReTool-SFT
@@ -78,7 +72,6 @@ hf download font-info/qwen3-4b-sft-SGLang-RL --local-dir /path/to/qwen3-4b-sft
 ```
 
 ### 3. 数据预处理
-
 ```bash
 cd /root/vime
 # 将保存路径替换为 /path/to/ReTool-SFT.parquet
@@ -86,7 +79,6 @@ python examples/retool/sft_data_processing.py
 ```
 
 ### 4. SFT
-
 ```bash
 cd /root/vime
 # 替换模型和数据加载/保存路径
@@ -94,7 +86,6 @@ python examples/retool/retool_qwen3_4b_sft.sh
 ```
 
 ### 5. RL
-
 ```bash
 cd /root/vime
 # 替换模型和数据加载/保存路径

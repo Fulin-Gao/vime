@@ -56,7 +56,7 @@ You are a helpful assistant.
 # Tools
 
 You can write Python code to solve problems. Put your code between <code> and </code> tags. The code will be executed and you will see the output.
-When you have the final answer, write it as: Answer: \\boxed{your_answer}
+When you have the final answer, write it as: Answer: \boxed{your_answer}
 {%- endif %}
 <|im_end|>
 {%- for message in messages %}
