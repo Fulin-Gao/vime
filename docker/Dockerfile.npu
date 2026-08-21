@@ -15,7 +15,8 @@ ARG SOC_VERSION="ascend910_9391"
 ARG PIP_INDEX_URL="https://mirrors.tuna.tsinghua.edu.cn/pypi/web/simple"
 ARG APTMIRROR=""
 
-ENV DEBIAN_FRONTEND=noninteractive \
+ENV SOC_VERSION=$SOC_VERSION \
+    DEBIAN_FRONTEND=noninteractive \
     PIP_NO_CACHE_DIR=1 \
     ASCEND_TOOLKIT_HOME=/usr/local/Ascend/ascend-toolkit/latest \
     ASCEND_OPP_PATH=/usr/local/Ascend/ascend-toolkit/latest/opp \
@@ -29,9 +30,9 @@ ENV DEBIAN_FRONTEND=noninteractive \
     HYDRA_FULL_ERROR=1 \
     PYTHONPATH=/root/Megatron-Bridge/src:/root/Megatron-LM:/root/vime
 
-# Patches copied from build context; always apply from /tmp/npu_patch so local/PR
-# builds use the same files as the build context (not the later git-cloned vime tree).
-COPY docker/npu_patch /tmp/npu_patch
+# PATCH MAINTENANCE: keep patch COPY/apply operations and
+# docker/npu_patch/series.conf synchronized.
+COPY docker/npu_patch /opt/npu_patch
 
 RUN git config --global http.sslVerify false
 
@@ -51,21 +52,17 @@ RUN if [ -n "$APTMIRROR" ];then sed -i "s@^\(deb.*\)https\?://[a-z0-9.-]*\.ubunt
 # vllm and vllm-ascend are installed editable (-e) in the base image; apply the
 # NPU colocate patches directly to their source trees.
 RUN git -C /vllm-workspace/vllm apply --check --whitespace=nowarn \
-      /tmp/npu_patch/vllm.patch && \
+      /opt/npu_patch/vllm.patch && \
     git -C /vllm-workspace/vllm apply --whitespace=nowarn \
-      /tmp/npu_patch/vllm.patch
+      /opt/npu_patch/vllm.patch
 
 RUN git -C /vllm-workspace/vllm-ascend apply --check --whitespace=nowarn \
-      /tmp/npu_patch/vllm-ascend.patch && \
+      /opt/npu_patch/vllm-ascend.patch && \
     git -C /vllm-workspace/vllm-ascend apply --whitespace=nowarn \
-      /tmp/npu_patch/vllm-ascend.patch
+      /opt/npu_patch/vllm-ascend.patch
 
 # Protect the serving stack while installing Vime dependencies.
 RUN python3 -c 'import importlib.metadata as m; names = ["numpy", "ray", "torch", "torch-npu", "torchvision", "transformers", "triton-ascend", "vllm", "vllm-ascend"]; open("/tmp/vime-npu-constraints.txt", "w").write("\n".join(f"{name}=={m.version(name)}" for name in names) + "\n")'
-
-# Vime: colocate NPU code lives on the ascend branch (not main/npu).
-RUN git clone --depth 1 --branch ascend \
-      https://github.com/vllm-project/vime.git /root/vime
 
 # Training source dependencies.
 RUN git clone https://github.com/NVIDIA/Megatron-LM.git /root/Megatron-LM && \
@@ -81,24 +78,15 @@ RUN git clone https://gitcode.com/Ascend/MindSpeed.git /root/MindSpeed && \
 RUN git clone https://github.com/ISEEKYAN/mbridge.git /root/mbridge && \
     git -C /root/mbridge checkout "${MBRIDGE_COMMIT}"
 
-# Apply NPU training-stack patches from build context (/tmp/npu_patch).
-RUN for patch_file in /tmp/npu_patch/*.patch; do \
-      base="$(basename "${patch_file}")"; \
-      case "${base}" in \
-        vllm-ascend.patch|vllm.patch) continue ;; \
-      esac; \
-      if [[ "$(tail -c 1 "${patch_file}" | od -An -t x1 | tr -d ' \n')" != "0a" ]]; then \
-        printf '\n' >> "${patch_file}"; \
-      fi; \
-    done && \
+# Apply NPU training-stack patches from the build-context snapshot.
+RUN git -C /root/Megatron-LM apply --whitespace=nowarn \
+      /opt/npu_patch/megatron_comm.patch && \
     git -C /root/Megatron-LM apply --whitespace=nowarn \
-      /tmp/npu_patch/megatron_comm.patch && \
-    git -C /root/Megatron-LM apply --whitespace=nowarn \
-      /tmp/npu_patch/megatron.patch && \
+      /opt/npu_patch/megatron.patch && \
     git -C /root/Megatron-Bridge apply --whitespace=nowarn \
-      /tmp/npu_patch/megatron-bridge.patch && \
+      /opt/npu_patch/megatron-bridge.patch && \
     git -C /root/MindSpeed apply --whitespace=nowarn \
-      /tmp/npu_patch/mindspeed.patch
+      /opt/npu_patch/mindspeed.patch
 
 # Megatron-Bridge is used directly from PYTHONPATH. Installing its package
 # metadata would pull CUDA-only dependencies into the Ascend environment.
@@ -106,6 +94,15 @@ RUN pip install --no-build-isolation "nvidia-modelopt[torch]>=0.37.0" && \
     pip install --no-deps --no-build-isolation -e /root/mbridge && \
     pip install --no-deps --no-build-isolation -e /root/Megatron-LM && \
     pip install --no-deps --no-build-isolation -e /root/MindSpeed
+
+# Defaults to the ascend branch for local builds. Release workflows should
+# pass an immutable commit SHA for reproducible images.
+ARG VIME_COMMIT=ascend
+RUN test -n "${VIME_COMMIT}" && \
+    git init /root/vime && \
+    git -C /root/vime remote add origin https://github.com/vllm-project/vime.git && \
+    git -C /root/vime fetch --depth 1 origin "${VIME_COMMIT}" && \
+    git -C /root/vime checkout --detach FETCH_HEAD
 
 # ring_flash_attn is a CUDA extension and is not used on Ascend.
 RUN pip install \
