@@ -1,0 +1,998 @@
+diff --git a/megatron/core/activations.py b/megatron/core/activations.py
+index 8b422d73a..58fba4667 100644
+--- a/megatron/core/activations.py
++++ b/megatron/core/activations.py
+@@ -5,19 +5,19 @@ import torch.nn.functional as F
+ from megatron.core.jit import jit_fuser
+ 
+ 
+-@jit_fuser
++
+ def squared_relu(x: torch.Tensor) -> torch.Tensor:
+     """Squared ReLU activation"""
+     return torch.pow(F.relu(x), 2)
+ 
+ 
+-@jit_fuser
++
+ def quick_gelu(x: torch.Tensor) -> torch.Tensor:
+     """Quick GELU activation"""
+     return x * torch.sigmoid(1.702 * x)
+ 
+ 
+-@jit_fuser
++
+ def fast_gelu(x: torch.Tensor) -> torch.Tensor:
+     """Fast GELU activation"""
+     return 0.5 * x * (1.0 + torch.tanh(x * 0.7978845608 * (1.0 + 0.044715 * x * x)))
+diff --git a/megatron/core/distributed/param_and_grad_buffer.py b/megatron/core/distributed/param_and_grad_buffer.py
+index a9982e176..807c4a88d 100644
+--- a/megatron/core/distributed/param_and_grad_buffer.py
++++ b/megatron/core/distributed/param_and_grad_buffer.py
+@@ -787,45 +787,19 @@ class _ParamAndGradBuffer:
+             # Individual param/grad contexts below handle TMS regions separately.
+             mem_alloc_context = nullcontext
+ 
+-        def _make_no_backup_context(tag, disable, flag_name="disable_grad_buffers_cpu_backup"):
+-            if disable:
+-                try:
+-                    from torch_memory_saver import torch_memory_saver
+-                except ImportError as e:
+-                    raise ImportError(
+-                        f"{flag_name}=True requires torch_memory_saver. "
+-                        "Install with: pip install torch-memory-saver"
+-                    ) from e
+-                return partial(
+-                    torch_memory_saver.region,
+-                    tag=tag,
+-                    enable_cpu_backup=False,
+-                )
+-            return nullcontext
+-        grad_mem_alloc_context = _make_no_backup_context(
+-            "grad_buffer", disable_grad_buffers_cpu_backup
+-        )
+-        param_mem_alloc_context = _make_no_backup_context(
+-            "param_buffer", disable_param_buffers_cpu_backup, "disable_param_buffers_cpu_backup"
+-        )
+-
++        # NPU already wraps model construction in the outer VIME training
++        # torch_memory_saver region. Do not open nested mem-pool regions here.
+         with mem_alloc_context():
+             # For MXFP8 param: Create a shared buffer for param AG and grad RS for memory efficiency
+             # The buffer is mapped to weight gradients whose dtype is either bf16 or FP32.
+             # It can be temporarily reused by param AG.
+             if self.ddp_config.use_distributed_optimizer and any(is_mxfp8tensor(p) for p in params):
+-                shared_mem_alloc_context = (
+-                    param_mem_alloc_context
+-                    if disable_param_buffers_cpu_backup
+-                    else grad_mem_alloc_context
++                self.shared_buffer = torch.zeros(
++                    self.numel,
++                    dtype=self.grad_dtype,
++                    device=torch.cuda.current_device(),
++                    requires_grad=False,
+                 )
+-                with shared_mem_alloc_context():
+-                    self.shared_buffer = torch.zeros(
+-                        self.numel,
+-                        dtype=self.grad_dtype,
+-                        device=torch.cuda.current_device(),
+-                        requires_grad=False,
+-                    )
+                 # For FP32 weight grads, only half of the buffer is used to store params in bf16.
+                 if self.grad_dtype == torch.float32:
+                     self.param_data = self.shared_buffer[: math.ceil(self.numel / 2)].view(
+@@ -837,20 +811,18 @@ class _ParamAndGradBuffer:
+             else:
+                 # Only re-map param tensors if using distributed optimizer.
+                 if self.ddp_config.use_distributed_optimizer:
+-                    with param_mem_alloc_context():
+-                        self.param_data = torch.zeros(
+-                            self.numel,
+-                            dtype=self.param_dtype,
+-                            device=torch.cuda.current_device(),
+-                            requires_grad=False,
+-                        )
+-                with grad_mem_alloc_context():
+-                    self.grad_data = torch.zeros(
++                    self.param_data = torch.zeros(
+                         self.numel,
+-                        dtype=self.grad_dtype,
++                        dtype=self.param_dtype,
+                         device=torch.cuda.current_device(),
+                         requires_grad=False,
+                     )
++                self.grad_data = torch.zeros(
++                    self.numel,
++                    dtype=self.grad_dtype,
++                    device=torch.cuda.current_device(),
++                    requires_grad=False,
++                )
+ 
+         self.grad_data_size = 0
+         self.param_data_size = 0
+diff --git a/megatron/core/fusions/fused_bias_dropout.py b/megatron/core/fusions/fused_bias_dropout.py
+index 336452562..614ee1a48 100644
+--- a/megatron/core/fusions/fused_bias_dropout.py
++++ b/megatron/core/fusions/fused_bias_dropout.py
+@@ -64,14 +64,14 @@ def bias_dropout_add_unfused(training):
+     return _bias_dropout_add
+ 
+ 
+-@jit_fuser
++
+ def bias_dropout_add_fused_train(
+     x_with_bias: Tuple[torch.Tensor, Optional[torch.Tensor]], residual: torch.Tensor, prob: float
+ ) -> torch.Tensor:
+     return _bias_dropout_add_func(x_with_bias, residual, prob, True)
+ 
+ 
+-@jit_fuser
++
+ def bias_dropout_add_fused_inference(
+     x_with_bias: Tuple[torch.Tensor, Optional[torch.Tensor]], residual: torch.Tensor, prob: float
+ ) -> torch.Tensor:
+diff --git a/megatron/core/fusions/fused_bias_geglu.py b/megatron/core/fusions/fused_bias_geglu.py
+index 7a7fbe7f9..f9a438953 100644
+--- a/megatron/core/fusions/fused_bias_geglu.py
++++ b/megatron/core/fusions/fused_bias_geglu.py
+@@ -13,7 +13,7 @@ from megatron.core.jit import jit_fuser
+ # x * 0.5 * (1.0 + torch.erf(x * 0.70710678))
+ 
+ 
+-@jit_fuser
++
+ def geglu(y):
+     """Performs GEGLU (GELU-Gated Linear Unit) activation.
+ 
+@@ -27,7 +27,7 @@ def geglu(y):
+     return (y_1 * 0.5 * (1.0 + torch.tanh(0.79788456 * y_1 * (1 + 0.044715 * y_1 * y_1)))) * y_2
+ 
+ 
+-@jit_fuser
++
+ def bias_geglu(bias, y):
+     """Performs GEGLU activation with bias addition.
+ 
+@@ -45,7 +45,7 @@ def bias_geglu(bias, y):
+ # gradient of tanh approximation of gelu
+ # gradient of actual gelu is:
+ # 0.5 * (1. + torch.erf(x * 0.70710678)) + 0.3989423 * x * torch.exp(-0.5 * x * x)
+-@jit_fuser
++
+ def geglu_back(g, y):
+     """Computes the gradient for the GEGLU activation.
+ 
+@@ -65,7 +65,7 @@ def geglu_back(g, y):
+     return torch.cat(((g * y_2) * ff, g * (y_1 * 0.5 * (1.0 + tanh_out))), -1)
+ 
+ 
+-@jit_fuser
++
+ def bias_geglu_back(g, y, bias):
+     """Computes the gradient for the biased GEGLU activation.
+ 
+@@ -181,13 +181,13 @@ def bias_geglu_impl(input, bias):
+ # ------------------------- QUICK GEGLU FUSION --------------------------
+ 
+ 
+-@jit_fuser
++
+ def quick_gelu(y: torch.Tensor) -> torch.Tensor:
+     """Sigmoid approximation of gelu"""
+     return y * torch.sigmoid(1.702 * y)
+ 
+ 
+-@jit_fuser
++
+ def quick_geglu(y: torch.Tensor, linear_offset: float = 0.0) -> torch.Tensor:
+     """Performs Quick-GELU-based GEGLU activation : quick_gelu(y1) * (y2 + offset).
+ 
+@@ -202,7 +202,7 @@ def quick_geglu(y: torch.Tensor, linear_offset: float = 0.0) -> torch.Tensor:
+     return quick_gelu(y_1) * (y_2 + linear_offset)
+ 
+ 
+-@jit_fuser
++
+ def weighted_quick_geglu(
+     y: torch.Tensor, weights: torch.Tensor, linear_offset: float = 0.0
+ ) -> torch.Tensor:
+@@ -217,7 +217,7 @@ def weighted_quick_geglu(
+ 
+ 
+ # gradient of sigmoid approximation of gelu
+-@jit_fuser
++
+ def quick_geglu_back(g, y, linear_offset: float = 0.0) -> torch.Tensor:
+     """Backward helper for Quick-GEGLU.
+ 
+@@ -236,7 +236,7 @@ def quick_geglu_back(g, y, linear_offset: float = 0.0) -> torch.Tensor:
+     return torch.cat((dy_1, dy_2), -1)
+ 
+ 
+-@jit_fuser
++
+ def weighted_quick_geglu_back(g, y, weights, linear_offset: float = 0.0):
+     """Backward helper for weighted Quick-GEGLU.
+     Returns gradient w.r.t input `y` and `weights`.
+@@ -255,7 +255,7 @@ def weighted_quick_geglu_back(g, y, weights, linear_offset: float = 0.0):
+ # ---------------- Weighted Bias Quick-GEGLU helpers -----------------
+ 
+ 
+-@jit_fuser
++
+ def weighted_bias_quick_geglu(
+     y: torch.Tensor, bias: torch.Tensor, weights: torch.Tensor, linear_offset: float = 0.0
+ ) -> torch.Tensor:
+@@ -275,7 +275,7 @@ def weighted_bias_quick_geglu(
+     return res.to(dtype)
+ 
+ 
+-@jit_fuser
++
+ def weighted_bias_quick_geglu_back(g, y, bias, weights, linear_offset: float = 0.0):
+     """Backward helper for weighted Quick-GEGLU with bias.
+ 
+diff --git a/megatron/core/fusions/fused_bias_gelu.py b/megatron/core/fusions/fused_bias_gelu.py
+index 8cc90f617..fda8f2f5f 100644
+--- a/megatron/core/fusions/fused_bias_gelu.py
++++ b/megatron/core/fusions/fused_bias_gelu.py
+@@ -13,7 +13,7 @@ from megatron.core.jit import jit_fuser
+ # x * 0.5 * (1.0 + torch.erf(x * 0.70710678))
+ 
+ 
+-@jit_fuser
++
+ def bias_gelu(bias, y):
+     x = bias + y
+     return x * 0.5 * (1.0 + torch.tanh(0.79788456 * x * (1 + 0.044715 * x * x)))
+@@ -22,7 +22,7 @@ def bias_gelu(bias, y):
+ # gradient of tanh approximation of gelu
+ # gradient of actual gelu is:
+ # 0.5 * (1. + torch.erf(x * 0.70710678)) + 0.3989423 * x * torch.exp(-0.5 * x * x)
+-@jit_fuser
++
+ def bias_gelu_back(g, bias, y):
+     x = bias + y
+     tanh_out = torch.tanh(0.79788456 * x * (1 + 0.044715 * x * x))
+diff --git a/megatron/core/fusions/fused_bias_swiglu.py b/megatron/core/fusions/fused_bias_swiglu.py
+index 632470876..105936786 100644
+--- a/megatron/core/fusions/fused_bias_swiglu.py
++++ b/megatron/core/fusions/fused_bias_swiglu.py
+@@ -12,7 +12,7 @@ from megatron.core.utils import nvtx_decorator
+ ###### BIAS SWIGLU FUSION/ NO AUTOGRAD ################
+ 
+ 
+-@jit_fuser
++
+ def swiglu(y):
+     """Performs SwiGLU (Swish-Gated Linear Unit) activation function.
+ 
+@@ -26,7 +26,7 @@ def swiglu(y):
+     return F.silu(y_1) * y_2
+ 
+ 
+-@jit_fuser
++
+ def bias_swiglu(y, bias):
+     """Performs SwiGLU activation with bias addition.
+ 
+@@ -41,7 +41,7 @@ def bias_swiglu(y, bias):
+     return swiglu(y)
+ 
+ 
+-@jit_fuser
++
+ def weighted_swiglu(y, weights):
+     dtype = y.dtype
+     res = swiglu(y) * weights
+@@ -51,7 +51,7 @@ def weighted_swiglu(y, weights):
+ # gradient of tanh approximation of gelu
+ # gradient of actual gelu is:
+ # 0.5 * (1. + torch.erf(x * 0.70710678)) + 0.3989423 * x * torch.exp(-0.5 * x * x)
+-@jit_fuser
++
+ def swiglu_back(g, y):
+     """Computes the gradient for the SwiGLU activation function.
+ 
+@@ -69,7 +69,7 @@ def swiglu_back(g, y):
+     )
+ 
+ 
+-@jit_fuser
++
+ def bias_swiglu_back(g, y, bias):
+     """Computes the gradient for the biased SwiGLU activation function.
+ 
+@@ -86,7 +86,7 @@ def bias_swiglu_back(g, y, bias):
+     return swiglu_back(g, y)
+ 
+ 
+-@jit_fuser
++
+ def weighted_swiglu_back(g, y, weights):
+     input_dtype = y.dtype
+     w_dtype = weights.dtype
+diff --git a/megatron/core/fusions/fused_cross_entropy.py b/megatron/core/fusions/fused_cross_entropy.py
+index 23e4b6031..4d447e0e0 100644
+--- a/megatron/core/fusions/fused_cross_entropy.py
++++ b/megatron/core/fusions/fused_cross_entropy.py
+@@ -9,7 +9,7 @@ from megatron.core.tensor_parallel.cross_entropy import VocabParallelCrossEntrop
+ from megatron.core.tensor_parallel.utils import VocabUtility
+ 
+ 
+-@jit_fuser
++
+ def calculate_logits_max(vocab_parallel_logits: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
+     """
+     Calculates the maximum logits of the predicted tokens.
+@@ -22,7 +22,7 @@ def calculate_logits_max(vocab_parallel_logits: torch.Tensor) -> Tuple[torch.Ten
+     return vocab_parallel_logits, logits_max
+ 
+ 
+-@jit_fuser
++
+ def calculate_predicted_logits(
+     vocab_parallel_logits: torch.Tensor,
+     target: torch.Tensor,
+@@ -44,7 +44,7 @@ def calculate_predicted_logits(
+     return target_mask, masked_target_1d, predicted_logits_sum_exp_logits, exp_logits
+ 
+ 
+-@jit_fuser
++
+ def calculate_cross_entropy_loss(
+     exp_logits: torch.Tensor, predicted_logits_sum_exp_logits: torch.Tensor
+ ) -> Tuple[torch.Tensor, torch.Tensor]:
+@@ -61,7 +61,7 @@ def calculate_cross_entropy_loss(
+     return exp_logits, loss
+ 
+ 
+-@jit_fuser
++
+ def calculate_gradients(
+     softmax: torch.Tensor,
+     grad_output: torch.Tensor,
+diff --git a/megatron/core/fusions/fused_pad_routing_map.py b/megatron/core/fusions/fused_pad_routing_map.py
+index c382178b6..563279edd 100644
+--- a/megatron/core/fusions/fused_pad_routing_map.py
++++ b/megatron/core/fusions/fused_pad_routing_map.py
+@@ -70,7 +70,7 @@ def _pad_routing_map_kernel(
+     tl.store(output_row_ptr + token_indices, output_row, mask=token_mask)
+ 
+ 
+-@jit_fuser
++
+ def fused_pad_routing_map(routing_map: torch.Tensor, pad_multiple: int) -> torch.Tensor:
+     """Fused version of pad_routing_map.
+     Args:
+diff --git a/megatron/core/fusions/fused_weighted_squared_relu.py b/megatron/core/fusions/fused_weighted_squared_relu.py
+index 02dabc14c..137022386 100644
+--- a/megatron/core/fusions/fused_weighted_squared_relu.py
++++ b/megatron/core/fusions/fused_weighted_squared_relu.py
+@@ -10,7 +10,7 @@ from megatron.core.utils import nvtx_decorator
+ ######################  WEIGHTED SQUARED ReLU FUSION  ######################
+ 
+ 
+-@jit_fuser
++
+ def weighted_squared_relu(x: torch.Tensor, weights: torch.Tensor) -> torch.Tensor:
+     """Element-wise weight applied after Squared-ReLU.
+ 
+@@ -28,7 +28,7 @@ def weighted_squared_relu(x: torch.Tensor, weights: torch.Tensor) -> torch.Tenso
+     return res.to(out_dtype)
+ 
+ 
+-@jit_fuser
++
+ def _squared_relu_back(g: torch.Tensor, x: torch.Tensor) -> torch.Tensor:
+     """Gradient of Squared-ReLU.
+ 
+@@ -37,7 +37,7 @@ def _squared_relu_back(g: torch.Tensor, x: torch.Tensor) -> torch.Tensor:
+     return g * 2 * F.relu(x)
+ 
+ 
+-@jit_fuser
++
+ def weighted_squared_relu_back(g: torch.Tensor, x: torch.Tensor, weights: torch.Tensor):
+     """Backward for weighted Squared-ReLU.
+ 
+diff --git a/megatron/core/inference/contexts/dynamic_context.py b/megatron/core/inference/contexts/dynamic_context.py
+index 2b241c86d..cca4503d5 100644
+--- a/megatron/core/inference/contexts/dynamic_context.py
++++ b/megatron/core/inference/contexts/dynamic_context.py
+@@ -51,12 +51,8 @@ try:
+ except:
+     HAVE_PACKAGING = False
+ 
+-try:
+-    import flashinfer  # pylint: disable=unused-import
+ 
+-    HAVE_FLASHINFER = True
+-except ImportError:
+-    HAVE_FLASHINFER = False
++HAVE_FLASHINFER = False
+ 
+ try:
+     from torch_memory_saver import torch_memory_saver
+diff --git a/megatron/core/models/gpt/gpt_layer_specs.py b/megatron/core/models/gpt/gpt_layer_specs.py
+index a9d3583e5..f2adaceb2 100755
+--- a/megatron/core/models/gpt/gpt_layer_specs.py
++++ b/megatron/core/models/gpt/gpt_layer_specs.py
+@@ -209,7 +209,7 @@ def get_gpt_layer_with_transformer_engine_spec(
+             'The fp8 argument in "get_gpt_layer_with_transformer_engine_spec" has been deprecated'
+             " and will be removed soon. Please update your code accordingly."
+         )
+-
++    from megatron.core.extensions.transformer_engine_spec_provider import TESpecProvider
+     if use_kitchen:
+         assert HAVE_KITCHEN
+         backend: BackendSpecProvider = KitchenSpecProvider(
+diff --git a/megatron/core/optimizer/distrib_optimizer.py b/megatron/core/optimizer/distrib_optimizer.py
+index dd8590a79..3736b0e31 100644
+--- a/megatron/core/optimizer/distrib_optimizer.py
++++ b/megatron/core/optimizer/distrib_optimizer.py
+@@ -659,10 +659,12 @@ class DistributedOptimizer(MixedPrecisionOptimizer):
+                     break
+         elif USING_TE_OPTIMIZER or USING_APEX_OPTIMIZER:
+             # Extract 'step', for TE FusedAdam support.
++            # Use int() to convert tensors to Python scalars so set() deduplicates
++            # by value (PyTorch tensor hashing is identity-based).
+             steps = list(
+                 set(
+                     [
+-                        g["step"]
++                        int(g["step"])
+                         for g in inner_state_dict["param_groups"]
+                         if len(g["params"]) > 0 and "step" in g
+                     ]
+@@ -824,7 +826,7 @@ class DistributedOptimizer(MixedPrecisionOptimizer):
+ 
+         # Extract 'step', for non-Apex/TE support.
+         if not HAVE_APEX_OR_TE:
+-            steps = list(set([g["step"] for g in state_dict["optimizer"]["param_groups"]]))
++            steps = list(set([int(g["step"]) for g in state_dict["optimizer"]["param_groups"]]))
+             assert len(steps) == 1
+             step = torch.tensor(steps[0], dtype=torch.float)
+ 
+diff --git a/megatron/core/ssm/chunk_gated_delta_rule.py b/megatron/core/ssm/chunk_gated_delta_rule.py
+new file mode 100644
+index 000000000..dc388fd7f
+--- /dev/null
++++ b/megatron/core/ssm/chunk_gated_delta_rule.py
+@@ -0,0 +1,490 @@
++# -*- coding: utf-8 -*-
++# Copyright (c) 2023-2025, Songlin Yang, Yu Zhang
++
++import warnings
++from typing import Optional
++
++import torch
++
++from .triton.chunk_delta_h import chunk_gated_delta_rule_bwd_dhu, chunk_gated_delta_rule_fwd_h
++from .triton.chunk_o import chunk_bwd_dqkwg, chunk_bwd_dv_local, chunk_fwd_o
++from .triton.chunk_scaled_dot_kkt import chunk_scaled_dot_kkt_fwd
++from .triton.wy_fast import prepare_wy_repr_bwd, recompute_w_u_fwd
++from .triton.solve_tril import solve_tril
++from .triton.cumsum import chunk_local_cumsum
++from .triton.utils import autocast_custom_bwd, autocast_custom_fwd, input_guard
++from .triton.l2norm import l2norm
++
++import torch_npu
++import fla_npu
++
++
++def prepare_chunk_indices(
++    cu_seqlens: list[int],
++    chunk_size: int
++) -> list[int]:
++    """
++    Generate chunk indices based on cu_seqlens (list[int]).
++
++    Note: The original PyTorch version returns a Tensor of shape [N, 2].
++    To maintain pure Python compatibility, this version returns list[tuple[start_seq_idx, chunk_idx_in_seq]].
++    If the operator requires a flattened list[int] (e.g., [s0, c0, s1, c1, ...]), please flatten it before calling.
++
++    Logic replication from original code:
++    1. Calculate length for each sequence: lens[i] = cu_seqlens[i+1] - cu_seqlens[i]
++    2. Calculate number of chunks needed for each sequence: ceil(lens[i] / chunk_size)
++    3. Generate corresponding (sequence_id, chunk_id) pairs
++    """
++    indices = []
++
++    # Iterate over each sequence segment
++    for i in range(len(cu_seqlens) - 1):
++        start = cu_seqlens[i]
++        end = cu_seqlens[i+1]
++        length = end - start
++
++        if length <= 0:
++            continue
++
++        # Calculate how many chunks are needed for this sequence
++        # Equivalent to cdiv(length, chunk_size)
++        num_chunks = (length + chunk_size - 1) // chunk_size
++
++        for chunk_id in range(num_chunks):
++            # Original logic: indices.eq(0).cumsum(0) - 1 corresponds to sequence index i
++            # Original logic: indices corresponds to chunk_id
++            indices.append((i))
++            indices.append((chunk_id))
++
++    return indices
++
++
++def chunk_gated_delta_rule_fwd(
++    q: torch.Tensor,
++    k: torch.Tensor,
++    v: torch.Tensor,
++    g: torch.Tensor,
++    beta: torch.Tensor,
++    scale: float,
++    initial_state: torch.Tensor,
++    output_final_state: bool,
++    cu_seqlens: Optional[torch.LongTensor] = None,
++    chunk_size: int = 64,
++):
++    g = chunk_local_cumsum(g, chunk_size=chunk_size, cu_seqlens=cu_seqlens, head_first=False)
++    # obtain WY representation. u is actually the new v.
++    A = chunk_scaled_dot_kkt_fwd(
++        k=k,
++        g=g,
++        beta=beta,
++        cu_seqlens=cu_seqlens,
++        chunk_size=chunk_size,
++        output_dtype=torch.float32
++    )
++    A = solve_tril(
++        A=A,
++        cu_seqlens=cu_seqlens,
++        output_dtype=k.dtype
++    )
++
++    q = q.transpose(1, 2).contiguous()
++    k = k.transpose(1, 2).contiguous()
++    v = v.transpose(1, 2).contiguous()
++    g = g.transpose(1, 2).contiguous()
++    A = A.transpose(1, 2).contiguous()
++    beta = beta.transpose(1, 2).contiguous().float()
++
++    if cu_seqlens is not None:
++        cu_seqlens1 = cu_seqlens.tolist()
++        chunk_indices = prepare_chunk_indices(cu_seqlens1, chunk_size)
++    else:
++        cu_seqlens1 = cu_seqlens
++        chunk_indices = None
++
++    w, u = torch.ops.npu.npu_recompute_w_u_fwd(
++            k,
++            v,
++            beta,
++            A,
++            chunk_size,
++            g = g,
++            gk = None,
++            cu_seqlens=cu_seqlens1,
++            chunk_indices=chunk_indices
++        )
++
++    h, v_new, final_state = torch.ops.npu.npu_chunk_gated_delta_rule_fwd_h(
++        k,
++        w,
++        u,
++        g=g,
++        initial_state=initial_state,
++        cu_seqlens=cu_seqlens1,
++        chunk_indices=chunk_indices,
++        output_final_state=output_final_state,
++        chunk_size=chunk_size
++    )
++
++    o = torch.ops.npu.npu_chunk_fwd_o(
++        q,
++        k,
++        v_new,
++        h,
++        scale,
++        g=g,
++        cu_seqlens=cu_seqlens1,
++        chunk_indices=chunk_indices,
++        chunk_size=chunk_size
++    )
++
++    g = g.transpose(1, 2).contiguous()
++    o = o.transpose(1, 2).contiguous()
++
++    return g, o, A, final_state
++
++
++def chunk_gated_delta_rule_bwd(
++    q: torch.Tensor,
++    k: torch.Tensor,
++    v: torch.Tensor,
++    g: torch.Tensor,
++    beta: torch.Tensor,
++    A: torch.Tensor,
++    scale: float,
++    initial_state: torch.Tensor,
++    do: torch.Tensor,
++    dht: torch.Tensor,
++    cu_seqlens: Optional[torch.LongTensor] = None,
++    chunk_size: int = 64,
++):
++    q = q.transpose(1, 2).contiguous()
++    k = k.transpose(1, 2).contiguous()
++    v = v.transpose(1, 2).contiguous()
++    g = g.transpose(1, 2).contiguous()
++    beta = beta.transpose(1, 2).contiguous().float()
++    do = do.transpose(1, 2).contiguous()
++    # Note: A is not transposed here because it was already transposed in the forward pass
++
++    if cu_seqlens is not None:
++        cu_seqlens1 = cu_seqlens.tolist()
++        chunk_indices = prepare_chunk_indices(cu_seqlens1, chunk_size)
++    else:
++        cu_seqlens1 = cu_seqlens
++        chunk_indices = None
++
++    w, u = torch.ops.npu.npu_recompute_w_u_fwd(
++            k,
++            v,
++            beta,
++            A,
++            chunk_size,
++            g = g,
++            gk = None,
++            cu_seqlens=cu_seqlens1,
++            chunk_indices=chunk_indices
++        )
++
++    h, v_new, final_state = torch.ops.npu.npu_chunk_gated_delta_rule_fwd_h(
++        k,
++        w,
++        u,
++        g,
++        initial_state=initial_state,
++        cu_seqlens=cu_seqlens1,
++        chunk_indices=chunk_indices,
++        output_final_state=False,
++        chunk_size=chunk_size
++    )
++
++    dv = torch.ops.npu.npu_chunk_bwd_dv_local(
++      q,
++      k,
++      do,
++      g,
++      g_gamma=None,
++      A=A,
++      cu_seqlens=cu_seqlens1,
++      chunk_indices=chunk_indices,
++      scale=scale,
++      chunk_size=chunk_size
++    )
++
++    dh, dh0, dv = torch.ops.npu.npu_chunk_gated_delta_rule_bwd_dhu(
++        q,
++        k,
++        w,
++        do,
++        dv,
++        g=g,
++        gK=None,
++        h0=None,
++        dht=dht,
++        cu_seqlens=cu_seqlens1,
++        chunk_indices=chunk_indices,
++        scale=scale,
++        chunk_size=chunk_size
++    )
++
++    dq, dk, dw, dg = torch.ops.npu.npu_chunk_bwd_dqkwg(
++        q,
++        k,
++        v_new,
++        g,
++        h,
++        do,
++        dh,
++        dv,
++        chunk_size,
++        chunk_indices=chunk_indices,
++        scale=scale,
++        cu_seqlens=cu_seqlens1
++    )
++
++    dq = dq.transpose(1, 2).contiguous()
++    dk = dk.transpose(1, 2).contiguous()
++    dg = dg.transpose(1, 2).contiguous()
++
++    dA = torch.ops.npu.npu_prepare_wy_repr_bwd_da(
++        k,
++        v,
++        beta,
++        A,
++        dw,
++        dv,
++        g,
++        cu_seqlens=cu_seqlens1,
++        chunk_indices=chunk_indices,
++        chunk_size=chunk_size
++    )
++
++    dk2, dv, db, dg2 = torch.ops.npu.npu_prepare_wy_repr_bwd_full(
++        k,
++        v,
++        beta,
++        A,
++        dA,
++        dw,
++        dv,
++        g,
++        chunk_size,
++        cu_seqlens=cu_seqlens1,
++        chunk_indices=chunk_indices,
++    )
++    dk2 = dk2.transpose(1, 2).contiguous()
++    dv = dv.transpose(1, 2).contiguous()
++    db = db.transpose(1, 2).contiguous()
++    dg2 = dg2.transpose(1, 2).contiguous()
++
++    dk.add_(dk2)
++    dg.add_(dg2)
++    if dg.dtype != torch.float32:
++        raise ValueError(
++            f"dg current type is {dg.dtype} , should be float32"
++        )
++
++    dg = chunk_local_cumsum(dg, chunk_size=chunk_size, reverse=True, cu_seqlens=cu_seqlens, head_first=False)
++
++    return dq, dk, dv, db, dg, dh0
++
++
++class ChunkGatedDeltaRuleFunction(torch.autograd.Function):
++
++    @staticmethod
++    @input_guard
++    @autocast_custom_fwd
++    def forward(
++            ctx,
++            q: torch.Tensor,
++            k: torch.Tensor,
++            v: torch.Tensor,
++            g: torch.Tensor,
++            beta: torch.Tensor,
++            scale: float,
++            initial_state: torch.Tensor,
++            output_final_state: bool,
++            cu_seqlens: Optional[torch.LongTensor] = None,
++            use_qk_l2norm_in_kernel: bool = False,
++            chunk_size: int = 64,
++    ):
++        q_rstd, k_rstd = None, None
++        g, o, A, final_state = chunk_gated_delta_rule_fwd(
++            q=q,
++            k=k,
++            v=v,
++            g=g,
++            beta=beta,
++            scale=scale,
++            initial_state=initial_state,
++            output_final_state=output_final_state,
++            cu_seqlens=cu_seqlens,
++            chunk_size=chunk_size
++        )
++        ctx.save_for_backward(q, q_rstd, k, k_rstd, v, g, beta, A, initial_state, cu_seqlens)
++        ctx.scale = scale
++        ctx.use_qk_l2norm_in_kernel = use_qk_l2norm_in_kernel
++        ctx.chunk_size = chunk_size
++        return o.to(q.dtype), final_state
++
++    @staticmethod
++    @input_guard
++    @autocast_custom_bwd
++    def backward(
++            ctx,
++            do: torch.Tensor,
++            dht: torch.Tensor
++    ):
++        q, q_rstd, k, k_rstd, v, g, beta, A, initial_state, cu_seqlens = ctx.saved_tensors
++        dq, dk, dv, db, dg, dh0 = chunk_gated_delta_rule_bwd(
++            q=q,
++            k=k,
++            v=v,
++            g=g,
++            beta=beta,
++            A=A,
++            scale=ctx.scale,
++            initial_state=initial_state,
++            do=do,
++            dht=dht,
++            cu_seqlens=cu_seqlens,
++            chunk_size=ctx.chunk_size,
++        )
++        return dq.to(q), dk.to(k), dv.to(v), dg.to(g), db.to(beta), None, dh0, None, None, None, None
++
++
++@torch.compiler.disable
++def chunk_gated_delta_rule(
++        q: torch.Tensor,
++        k: torch.Tensor,
++        v: torch.Tensor,
++        g: torch.Tensor,
++        beta: torch.Tensor,
++        scale: float = None,
++        initial_state: torch.Tensor = None,
++        output_final_state: bool = False,
++        use_qk_l2norm_in_kernel: bool = False,
++        cu_seqlens: Optional[torch.LongTensor] = None,
++        chunk_size: int = 64,
++        head_first: bool = False,
++):
++    r"""
++    Args:
++        q (torch.Tensor):
++            queries of shape `[B, T, H, K]`.
++        k (torch.Tensor):
++            keys of shape `[B, T, H, K]`.
++        v (torch.Tensor):
++            values of shape `[B, T, H, V]`.
++        g (torch.Tensor):
++            (forget) gating tensor (in log space!) of shape `[B, T, H]`.
++        beta (torch.Tensor):
++            betas of shape `[B, T, H]`.
++        scale (Optional[float]):
++            Scale factor for the RetNet attention scores.
++            If not provided, it will default to `1 / sqrt(K)`. Default: `None`.
++        initial_state (Optional[torch.Tensor]):
++            Initial state of shape `[N, H, K, V]` for `N` input sequences.
++            For equal-length input sequences, `N` equals the batch size `B`.
++            Default: `None`.
++        output_final_state (Optional[bool]):
++            Whether to output the final state of shape `[N, H, K, V]`. Default: `False`.
++        use_qk_l2norm_in_kernel (bool):
++            Whether to apply L2norm to the q/k tensor internally. Default: `False`.
++        cu_seqlens (torch.LongTensor):
++            Cumulative sequence lengths of shape `[N+1]` used for variable-length training,
++            consistent with the FlashAttention API.
++        head_first (Optional[bool]):
++            Whether the inputs are in the head-first format. Default: `False`.
++            This argument has been deprecated.
++
++    Returns:
++        o (torch.Tensor):
++            Outputs of shape `[B, T, H, V]`.
++        final_state (torch.Tensor):
++            Final state of shape `[N, H, K, V]` if `output_final_state=True` else `None`.
++
++    Examples::
++        >>> import torch
++        >>> import torch.nn.functional as F
++        >>> from einops import rearrange
++        >>> from fla.ops.gated_delta_rule import chunk_gated_delta_rule
++        # inputs with equal lengths
++        >>> B, T, H, K, V = 4, 2048, 4, 512, 512
++        >>> q = torch.randn(B, T, H, K, dtype=torch.bfloat16, device='cuda')
++        >>> k = F.normalize(torch.randn(B, T, H, K, dtype=torch.bfloat16, device='cuda'), p=2, dim=-1)
++        >>> v = torch.randn(B, T, H, V, dtype=torch.bfloat16, device='cuda')
++        >>> beta = torch.rand(B, T, H, dtype=torch.bfloat16, device='cuda').sigmoid()
++        >>> g = F.logsigmoid(torch.rand(B, T, H, dtype=torch.bfloat16, device='cuda'))
++        >>> h0 = torch.randn(B, H, K, V, dtype=torch.bfloat16, device='cuda')
++        >>> o, ht = chunk_gated_delta_rule(
++        ...     q, k, v, g, beta,
++        ...     initial_state=h0,
++        ...     output_final_state=True
++        ... )
++        # for variable-length inputs, the batch size `B` is expected to be 1 and `cu_seqlens` is required
++        >>> q, k, v, beta, g = map(lambda x: rearrange(x, 'b t ... -> 1 (b t) ...'), (q, k, v, beta, g))
++        # for a batch with 4 sequences, `cu_seqlens` with 5 start/end positions are expected
++        >>> cu_seqlens = q.new_tensor([0, 2048, 4096, 6144, 8192], dtype=torch.long)
++        >>> o, ht = chunk_gated_delta_rule(
++        ...     q, k, v, g, beta,
++        ...     initial_state=h0,
++        ...     output_final_state=True,
++        ...     cu_seqlens=cu_seqlens
++        ... )
++    """
++    if q.dtype != k.dtype or k.dtype != v.dtype:
++        raise ValueError(
++            f"q current type is {q.dtype} , k current type is {k.dtype} ,v current type is {v.dtype} , they should are equal"
++        )
++    if q.dtype == torch.float32:
++        raise ValueError(
++            "ChunkGatedDeltaRuleFunction does not support float32. Please use bfloat16."
++        )
++    if len(beta.shape) != 3:
++        raise ValueError(
++            f"beta current shape len is {len(beta.shape)}, beta must be of shape [B, T, H] if head_first=False, or [B, H, T] otherwise."
++        )
++
++    if head_first:
++        warnings.warn(
++            "head_first is deprecated and will be removed in a future version. "
++            "Please use head_first=False for now instead."
++        )
++    if not head_first and q.shape[1] < q.shape[2]:
++        warnings.warn(
++            f"Input tensor shape suggests potential format mismatch: seq_len ({q.shape[1]}) < num_heads ({q.shape[2]}). "
++            "This may indicate the inputs were passed in head-first format [B, H, T, ...] "
++            "when head_first=False was specified. "
++            "Please verify your input tensor format matches the expected shape [B, T, H, ...]."
++        )
++    if cu_seqlens is not None:
++        if q.shape[0] != 1:
++            raise ValueError(
++                f"The batch size is expected to be 1 rather than {q.shape[0]} when using `cu_seqlens`."
++                f"Please flatten variable-length inputs before processing."
++            )
++        if initial_state is not None and initial_state.shape[0] != len(cu_seqlens) - 1:
++            raise ValueError(
++                f"The number of initial states is expected to be equal to the number of input sequences, "
++                f"i.e., {len(cu_seqlens) - 1} rather than {initial_state.shape[0]}."
++            )
++    if scale is None:
++        scale = k.shape[-1] ** -0.5
++
++    if use_qk_l2norm_in_kernel:
++        q = l2norm(q, dim=-1, eps=1e-6)
++        k = l2norm(k, dim=-1, eps=1e-6)
++
++    o, final_state = ChunkGatedDeltaRuleFunction.apply(
++        q,
++        k,
++        v,
++        g,
++        beta,
++        scale,
++        initial_state,
++        output_final_state,
++        cu_seqlens,
++        use_qk_l2norm_in_kernel,
++        chunk_size
++    )
++    return o, final_state
+diff --git a/megatron/core/ssm/gated_delta_net.py b/megatron/core/ssm/gated_delta_net.py
+index 601a72a43..8998e70f9 100644
+--- a/megatron/core/ssm/gated_delta_net.py
++++ b/megatron/core/ssm/gated_delta_net.py
+@@ -40,9 +40,9 @@ from megatron.core.transformer.utils import (
+ from megatron.core.utils import deprecate_inference_params, nvtx_range_pop, nvtx_range_push
+
+ try:
+-    from fla.modules.convolution import causal_conv1d
+-    from fla.modules.l2norm import l2norm
+-    from fla.ops.gated_delta_rule import chunk_gated_delta_rule
++    from megatron.core.ssm.triton.causal_conv1d import causal_conv1d
++    from megatron.core.ssm.triton.l2norm import l2norm
++    from megatron.core.ssm.chunk_gated_delta_rule import chunk_gated_delta_rule
+
+     HAVE_FLA = True
+ except ImportError:
+@@ -377,14 +377,13 @@ class GatedDeltaNet(MegatronModule):
+             qkv = self.act_fn(conv_out[..., :seq_len])
+             qkv = qkv.transpose(1, 2)  # b, d, s -> b, s, d
+         else:
+-            assert self.activation in ["silu", "swish"]
++            conv1d_weight = conv1d_weight.squeeze(1)
+             qkv, _ = causal_conv1d(
+-                x=qkv,  # FLA conv1d accepts [b, s, d] format input
+-                weight=conv1d_weight.squeeze(1),  # d, 1, w -> d, w
++                x=qkv,
++                weight=conv1d_weight.transpose(-1, -2).contiguous(),
+                 bias=conv1d_bias,
+-                activation=self.activation,
+-                initial_state=None,
+-                output_final_state=False,
++                activation='silu',
++                cu_seqlens=None
+             )
+         nvtx_range_pop(suffix="conv1d")
+
+@@ -465,7 +464,6 @@ class GatedDeltaNet(MegatronModule):
+
+         return out, out_bias
+
+-    @jit_fuser
+     def _apply_gated_norm(self, x, gate):
+         # Output Norm
+         x_dtype = x.dtype
