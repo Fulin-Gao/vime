@@ -129,7 +129,7 @@ new file mode 100644
 index 000000000..4dfc37f20
 --- /dev/null
 +++ b/megatron/core/ssm/triton/chunk_delta_h.py
-@@ -0,0 +1,574 @@
+@@ -0,0 +1,572 @@
 +# -*- coding: utf-8 -*-
 +# Copyright (c) 2023-2025, Songlin Yang, Yu Zhang
 +
@@ -140,8 +140,6 @@ index 000000000..4dfc37f20
 +import triton.language as tl
 +
 +from .utils import prepare_chunk_indices, prepare_chunk_offsets, get_autotune_config, get_npu_properties
-+
-+CUBE_CORE_NUM = get_npu_properties()['num_aicore']
 +
 +
 +@triton.heuristics({
