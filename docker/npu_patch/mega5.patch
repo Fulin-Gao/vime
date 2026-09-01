@@ -1,0 +1,934 @@
+diff --git a/megatron/core/ssm/triton/utils.py b/megatron/core/ssm/triton/utils.py
+new file mode 100644
+index 000000000..fc5732596
+--- /dev/null
++++ b/megatron/core/ssm/triton/utils.py
+@@ -0,0 +1,370 @@
++# -*- coding: utf-8 -*-
++# Copyright (c) 2023-2025, Songlin Yang, Yu Zhang
++
++# pylint: disable=no-name-in-module,consider-using-from-import,pointless-string-statement,redefined-outer-name
++
++import itertools
++import contextlib
++import os
++import functools
++import warnings
++import logging
++from enum import Enum
++from functools import lru_cache
++from typing import Any, Callable, Optional
++from packaging import version
++
++import torch
++import triton
++import triton.language as tl
++import triton.language.extra.libdevice as tldevice
++import triton.runtime.driver as driver
++
++logger = logging.getLogger(__name__)
++
++FLA_CI_ENV = os.getenv("FLA_CI_ENV") == "1"
++
++
++def tensor_cache(fn: Optional[Callable[..., torch.Tensor]] = None, *, maxsize: int = 1) -> Any:
++    """
++    A decorator that caches the most recent results of a function with tensor inputs.
++
++    This decorator will store the outputs of the decorated function for the most recent
++    set of input tensors, up to `maxsize` entries. If the function is called again with
++    the same input tensors, it will return the cached result.
++
++    When maxsize=1 (default), the behavior is identical to caching only the most recent result.
++    Can be used as @tensor_cache or @tensor_cache(maxsize=n).
++
++    Args:
++        fn (Callable[..., torch.Tensor], optional):
++            The function to be decorated when used without parentheses.
++        maxsize (int):
++            Maximum number of input combinations to cache. Default is 1.
++
++    Returns:
++        Callable[..., torch.Tensor]:
++        A wrapped version of the input function with caching.
++    """
++    if maxsize < 1:
++        raise ValueError("maxsize must be at least 1")
++
++    def _is_match(a: Any, b: Any) -> bool:
++        if isinstance(a, torch.Tensor) and isinstance(b, torch.Tensor):
++            return a is b
++        try:
++            return a == b
++        except Exception:
++            return a is b
++
++    def _make_wrapper(fn: Callable[..., torch.Tensor]) -> Callable[..., torch.Tensor]:
++        cache: list = []
++
++        @functools.wraps(fn)
++        def wrapper(*args: Any, **kwargs: Any) -> Any:
++            for i, (cached_args, cached_kwargs, cached_result) in enumerate(cache):
++                if len(args) == len(cached_args) and len(kwargs) == len(cached_kwargs):
++                    if all(_is_match(a, b) for a, b in zip(args, cached_args)) and all(
++                        k in cached_kwargs and _is_match(v, cached_kwargs[k]) for k, v in kwargs.items()
++                    ):
++                        if i != 0:
++                            cache.insert(0, cache.pop(i))
++                        return cached_result
++
++            result = fn(*args, **kwargs)
++            cache.insert(0, (args, kwargs, result))
++            if len(cache) > maxsize:
++                cache.pop()
++            return result
++
++        return wrapper
++
++    if fn is not None:
++        return _make_wrapper(fn)
++    return _make_wrapper
++
++
++@tensor_cache
++def prepare_lens(cu_seqlens: torch.LongTensor) -> torch.LongTensor:
++    return cu_seqlens[1:] - cu_seqlens[:-1]
++
++
++@tensor_cache(maxsize=3)
++def prepare_chunk_indices(cu_seqlens: torch.LongTensor, chunk_size: int) -> torch.LongTensor:
++    indices = torch.cat([torch.arange(n) for n in triton.cdiv(prepare_lens(cu_seqlens), chunk_size).tolist()])
++    return torch.stack([indices.eq(0).cumsum(0) - 1, indices], 1).to(cu_seqlens)
++
++
++def get_abs_err(x, y):
++    return (x.detach() - y.detach()).flatten().abs().max().item()
++
++
++def get_err_ratio(x, y):
++    err = (x.detach() - y.detach()).flatten().square().mean().sqrt().item()
++    base = (x.detach()).flatten().square().mean().sqrt().item()
++    return err / (base + 1e-8)
++
++
++def assert_close(prefix, ref, tri, ratio, warning=False, err_atol=1e-6):
++    abs_atol = get_abs_err(ref, tri)
++    msg = f"{prefix:>16} diff: {abs_atol:.6f} ratio: {get_err_ratio(ref, tri):.6f}"
++    logger.info(msg)
++    error_rate = get_err_ratio(ref, tri)
++    if abs_atol <= err_atol:
++        return
++    if warning or (FLA_CI_ENV and (error_rate < 0.01 or abs_atol <= 0.3)):
++        if error_rate > ratio:
++            warnings.warn(msg)
++    else:
++        assert error_rate < ratio, msg
++
++
++if hasattr(triton.language, '_experimental_make_tensor_descriptor'):
++    # For Triton 3.3.x
++    make_tensor_descriptor = triton.language._experimental_make_tensor_descriptor
++elif hasattr(triton.language, 'make_tensor_descriptor'):
++    # For Triton 3.4.x and later
++    make_tensor_descriptor = triton.language.make_tensor_descriptor
++else:
++    """
++    Fallback implementation when TMA is not supported.
++    Returns None to indicate TMA descriptors are unavailable.
++    Just make triton compiler happy.
++    """
++
++    @triton.jit
++    def make_tensor_descriptor(
++        base,
++        shape,
++        strides,
++        block_shape,
++        _builder=None,
++    ):
++        return None
++
++
++def _cpu_device_warning():
++    warnings.warn(('Triton is not supported on current platform, roll back to CPU.'), stacklevel=1)
++
++
++@lru_cache(maxsize=None)
++def get_available_device() -> str:
++    try:
++        return triton.runtime.driver.active.get_current_target().backend
++    except BaseException:
++        _cpu_device_warning()
++        return 'cpu'
++
++
++def map_triton_backend_to_torch_device() -> str:
++    backend = get_available_device()  # 'cuda' | 'hip' | 'xpu' | 'cpu' | ...
++    return {'cuda': 'cuda', 'hip': 'cuda', 'xpu': 'xpu'}.get(backend, backend)
++
++
++device = get_available_device() if get_available_device() != 'hip' else 'cuda'
++device_torch_lib = getattr(torch, device)
++device_platform = get_available_device()
++is_amd = device_platform == 'hip'
++is_nvidia = device_platform == 'cuda'
++is_nvidia_hopper = is_nvidia and (
++    'NVIDIA H' in torch.cuda.get_device_name(0) or torch.cuda.get_device_capability()[0] >= 9
++)
++
++is_tf32_supported = is_nvidia and torch.cuda.get_device_capability(0)[0] >= 8
++is_tma_supported = (
++    (is_nvidia and torch.cuda.get_device_capability(0)[0] >= 9)
++    and os.environ.get('FLA_NO_USE_TMA', '0') != '1'
++    and (
++        hasattr(triton.language, '_experimental_make_tensor_descriptor')
++        or hasattr(triton.language, 'make_tensor_descriptor')
++    )
++)
++
++if is_nvidia and not is_tf32_supported:
++    # Make old card happy, since triton will use tf32 by default.
++    # This is a workaround for old nvidia card.
++    os.environ['TRITON_F32_DEFAULT'] = 'ieee'
++
++
++@lru_cache(maxsize=None)
++def check_pytorch_version(version_s: str = '2.4') -> bool:
++    return version.parse(torch.__version__) >= version.parse(version_s)
++
++
++if check_pytorch_version('2.4'):
++    device = 'cuda' if device == 'cpu' else device
++    autocast_custom_fwd = functools.partial(torch.amp.custom_fwd, device_type=device)
++    autocast_custom_bwd = functools.partial(torch.amp.custom_bwd, device_type=device)
++
++    def custom_device_ctx(index: int):
++        return device_torch_lib.device(index)
++else:
++    assert device == 'cuda', 'Only cuda device is supported for PyTorch version < 2.4.0.'
++    autocast_custom_fwd = device_torch_lib.amp.custom_fwd
++    autocast_custom_bwd = device_torch_lib.amp.custom_bwd
++
++    def custom_device_ctx(index: int):
++        return torch.cuda.device(index)
++
++
++def input_guard(fn: Callable[..., torch.Tensor]) -> Callable[..., torch.Tensor]:
++    """
++    A decorator to make sure all input tensors are contiguous and set the device based on input tensors.
++    """
++
++    @functools.wraps(fn)
++    def wrapper(*args, **kwargs):
++        contiguous_args = (i if not isinstance(i, torch.Tensor) else i.contiguous() for i in args)
++        contiguous_kwargs = {k: (v if not isinstance(v, torch.Tensor) else v.contiguous()) for k, v in kwargs.items()}
++
++        tensor = None
++        for arg in args:
++            if isinstance(arg, torch.Tensor):
++                tensor = arg
++                break
++        if tensor is None:
++            for value in kwargs.values():
++                if isinstance(value, torch.Tensor):
++                    tensor = value
++                    break
++
++        if tensor is not None:
++            ctx = custom_device_ctx(tensor.device.index)
++        else:
++            ctx = contextlib.nullcontext()
++
++        with ctx:
++            return fn(*contiguous_args, **contiguous_kwargs)
++
++    return wrapper
++
++
++@tensor_cache
++def prepare_chunk_offsets(cu_seqlens: torch.LongTensor, chunk_size: int) -> torch.LongTensor:
++    return torch.cat([cu_seqlens.new_tensor([0]), triton.cdiv(prepare_lens(cu_seqlens), chunk_size)]).cumsum(-1)
++
++
++if os.environ.get('FLA_USE_FAST_OPS', '0') == '1':
++    exp = tldevice.fast_expf
++    exp2 = tldevice.exp2
++    log = tldevice.fast_logf
++    log2 = tldevice.fast_log2f
++else:
++    exp = tl.exp
++    exp2 = tl.math.exp2
++    log = tl.log
++    log2 = tl.log2
++
++
++def get_all_max_shared_mem():
++    try:
++        return [
++            triton.runtime.driver.active.utils.get_device_properties(i)['max_shared_mem']
++            for i in range(device_torch_lib.device_count())
++        ]
++    except BaseException:
++        _cpu_device_warning()
++        return [-1]
++
++
++class Backend(Enum):
++    ADA = 101376  # RTX 4090
++    AMPERE = 166912  # A100
++    HOPPER = 232448  # H100
++    DEFAULT = 102400  # Default
++
++    @classmethod
++    def get_shared_memory(cls, arch: str) -> int:
++        try:
++            return cls[arch.upper()].value
++        except KeyError:
++            return cls.DEFAULT.value
++
++
++@lru_cache(maxsize=None)
++def check_shared_mem(arch: str = "none", tensor_idx: int = 0) -> bool:
++    try:
++        device_shared_mem_list = get_all_max_shared_mem()
++        max_shared_memory = device_shared_mem_list[tensor_idx]
++        return max_shared_memory >= Backend.get_shared_memory(arch)
++    except Exception:
++        return False
++
++
++def get_autotune_config(
++    multibuffer_list: tuple = (False,),
++    unit_flag_list: tuple = (False,),
++    limit_auto_multi_buffer_only_for_local_buffer_list: tuple = (False,),
++    limit_auto_multi_buffer_of_local_buffer_list: tuple = ("no-l0c",),
++    set_workspace_multibuffer_list: tuple = (2, 4),
++    enable_hivm_auto_cv_balance_list: tuple = (True,),
++    tile_mix_vector_loop_num_list: tuple = (2, 4),
++    tile_mix_cube_loop_num_list: tuple = (2, 4),
++):
++    configs = []
++    for (
++        multibuffer,
++        unit_flag,
++        limit_auto_multi_buffer_only_for_local_buffer,
++        limit_auto_multi_buffer_of_local_buffer,
++    ) in itertools.product(
++        list(multibuffer_list),
++        list(unit_flag_list),
++        list(limit_auto_multi_buffer_only_for_local_buffer_list),
++        list(limit_auto_multi_buffer_of_local_buffer_list),
++    ):
++        base_config_dict = {
++            'multibuffer': multibuffer,
++            'unit_flag': unit_flag,
++            'limit_auto_multi_buffer_only_for_local_buffer': limit_auto_multi_buffer_only_for_local_buffer,
++            'limit_auto_multi_buffer_of_local_buffer': limit_auto_multi_buffer_of_local_buffer,
++        }
++
++        if limit_auto_multi_buffer_only_for_local_buffer:
++            configs.append(triton.Config(base_config_dict))
++        else:
++            for (
++                set_workspace_multibuffer,
++                enable_hivm_auto_cv_balance,
++                tile_mix_vector_loop,
++                tile_mix_cube_loop,
++            ) in itertools.product(
++                list(set_workspace_multibuffer_list),
++                list(enable_hivm_auto_cv_balance_list),
++                list(tile_mix_vector_loop_num_list),
++                list(tile_mix_cube_loop_num_list),
++            ):
++                full_config_dict = base_config_dict.copy()
++                full_config_dict.update(
++                    {
++                        'set_workspace_multibuffer': set_workspace_multibuffer,
++                        'enable_hivm_auto_cv_balance': enable_hivm_auto_cv_balance,
++                        'tile_mix_vector_loop': tile_mix_vector_loop,
++                        'tile_mix_cube_loop': tile_mix_cube_loop,
++                    }
++                )
++                configs.append(triton.Config(full_config_dict))
++    return configs
++
++
++def get_npu_properties():
++    return driver.active.utils.get_device_properties(torch.npu.current_device())
++
++
++@functools.cache
++def get_vector_num() -> int:
++    import torch_npu
++
++    current_device = torch_npu.npu.current_device()
++    properties = driver.active.utils.get_device_properties(current_device)
++    return properties["num_vectorcore"]
++
++
++@lru_cache
++def is_arch35():
++    try:
++        import torch_npu
++
++        return "Ascend910_95" in torch_npu.npu.get_device_name() or "Ascend950" in torch_npu.npu.get_device_name()
++    except Exception:
++        return False
+diff --git a/megatron/core/ssm/triton/wy_fast.py b/megatron/core/ssm/triton/wy_fast.py
+new file mode 100644
+index 000000000..ab9c50582
+--- /dev/null
++++ b/megatron/core/ssm/triton/wy_fast.py
+@@ -0,0 +1,340 @@
++# -*- coding: utf-8 -*-
++# Copyright (c) 2023-2025, Songlin Yang, Yu Zhang
++# Copyright (c) 2026, Huawei Technologies Co., Ltd.  All rights reserved.
++
++from typing import Optional, Tuple
++
++import torch
++import triton
++import triton.language as tl
++
++from .utils import prepare_chunk_indices, exp
++
++
++@triton.heuristics({
++    'IS_VARLEN': lambda args: args['cu_seqlens'] is not None
++})
++@triton.jit(do_not_specialize=['T'])
++def prepare_wy_repr_bwd_kernel(
++        k,
++        v,
++        beta,
++        g,
++        A,
++        dw,
++        du,
++        dk,
++        dv,
++        dbeta,
++        dg,
++        cu_seqlens,
++        chunk_indices,
++        T,
++        B,
++        H: tl.constexpr,
++        K: tl.constexpr,
++        V: tl.constexpr,
++        NT: tl.constexpr,
++        BT: tl.constexpr,
++        BK: tl.constexpr,
++        BV: tl.constexpr,
++        IS_VARLEN: tl.constexpr
++):
++    core_id = tl.program_id(0)
++    total_cores = tl.num_programs(0)
++    T_max = T
++
++    base_chunks_per_pid = NT // total_cores
++    remainder_chunks = NT % total_cores
++
++    if core_id < remainder_chunks:
++        chunks_this_pid = base_chunks_per_pid + 1
++        start_idx = core_id * chunks_this_pid
++    else:
++        chunks_this_pid = base_chunks_per_pid
++        start_idx = core_id * chunks_this_pid + remainder_chunks
++
++    for idx in range(start_idx, start_idx + chunks_this_pid):
++        for i_b in range(B):
++            if IS_VARLEN:
++                i_n, i_t = tl.load(chunk_indices + idx * 2).to(tl.int32), tl.load(chunk_indices + idx * 2 + 1).to(tl.int32)
++                bos, eos = tl.load(cu_seqlens + i_n).to(tl.int32), tl.load(cu_seqlens + i_n + 1).to(tl.int32)
++                T = eos - bos
++            else:
++                i_t = idx
++                bos, eos = i_b * T, i_b * T + T
++
++            o_t = i_t * BT + tl.arange(0, BT)
++            m_t = o_t < T
++            m_A = (o_t[:, None] > o_t[None, :]) & (m_t[:, None] & m_t)
++            for i_h in range(0, H):
++                if IS_VARLEN:
++                    offset = bos + i_h * T_max
++                else:
++                    offset = bos * H + i_h * T_max
++
++                p_beta = tl.make_block_ptr(beta + offset, (T,), (1,), (i_t * BT,), (BT,), (0,))
++                p_g = tl.make_block_ptr(g + offset, (T,), (1,), (i_t * BT,), (BT,), (0,))
++                p_A = tl.make_block_ptr(A + (bos * H + i_h) * BT, (BT, T), (1, H * BT), (0, i_t * BT), (BT, BT), (0, 1))
++
++                b_A = tl.load(p_A, boundary_check=(0, 1))
++                b_beta = tl.load(p_beta, boundary_check=(0,))
++                b_g = tl.load(p_g, boundary_check=(0,))
++                b_g_exp = tl.exp(b_g)
++
++                b_dbeta = tl.zeros([BT], dtype=tl.float32)
++                b_dA = tl.zeros([BT, BT], dtype=tl.float32)
++                b_dg = tl.zeros([BT], dtype=tl.float32)
++
++                for i_k in range(tl.cdiv(K, BK)):
++                    p_k = tl.make_block_ptr(k + (bos * H + i_h) * K, (T, K), (H * K, 1), (i_t * BT, i_k * BK), (BT, BK), (1, 0))
++                    p_dk = tl.make_block_ptr(dk + (bos * H + i_h) * K, (T, K), (H * K, 1), (i_t * BT, i_k * BK), (BT, BK), (1, 0))
++                    p_dw = tl.make_block_ptr(dw + (bos * H + i_h) * K, (T, K), (H * K, 1), (i_t * BT, i_k * BK), (BT, BK), (1, 0))
++                    b_k = tl.load(p_k, boundary_check=(0, 1))
++                    b_k_beta_g = (b_k * b_beta[:, None] * b_g_exp[:, None]).to(b_k.dtype)
++                    b_dw = tl.load(p_dw, boundary_check=(0, 1))
++                    b_dA += tl.dot(b_dw, tl.trans(b_k_beta_g))
++                    b_dk_beta_g = tl.dot(b_A, b_dw)
++                    b_dk = b_dk_beta_g * b_beta[:, None] * b_g_exp[:, None]
++                    b_dbeta += tl.sum(b_dk_beta_g * b_k * b_g_exp[:, None], 1)
++                    b_dg += tl.sum(b_dk_beta_g * b_k * b_g_exp[:, None] * b_beta[:, None], 1)
++                    tl.store(p_dk, b_dk.to(p_dk.dtype.element_ty), boundary_check=(0, 1))
++
++                for i_v in range(tl.cdiv(V, BV)):
++                    p_v = tl.make_block_ptr(v + (bos * H + i_h) * V, (T, V), (H * V, 1), (i_t * BT, i_v * BV), (BT, BV), (1, 0))
++                    p_dv = tl.make_block_ptr(dv + (bos * H + i_h) * V, (T, V), (H * V, 1), (i_t * BT, i_v * BV), (BT, BV), (1, 0))
++                    p_du = tl.make_block_ptr(du + (bos * H + i_h) * V, (T, V), (H * V, 1), (i_t * BT, i_v * BV), (BT, BV), (1, 0))
++                    b_v = tl.load(p_v, boundary_check=(0, 1))
++                    b_v_beta = (b_v * b_beta[:, None]).to(b_v.dtype)
++                    b_du = tl.load(p_du, boundary_check=(0, 1))
++                    b_dA += tl.dot(b_du, tl.trans(b_v_beta))
++                    b_dv_beta = tl.dot(b_A, b_du)
++                    b_dv = b_dv_beta * b_beta[:, None]
++                    b_dbeta += tl.sum(b_dv_beta * b_v, 1)
++                    tl.store(p_dv, b_dv.to(p_dv.dtype.element_ty), boundary_check=(0, 1))
++
++                b_dA = tl.where(m_A, b_dA, 0)
++                b_dA = tl.dot(b_dA.to(b_A.dtype), b_A)
++                b_dA = tl.dot(b_A, b_dA.to(b_A.dtype))
++                b_dA = tl.where(m_A, -b_dA * exp(b_g[:, None] - b_g[None, :]), 0)
++                b_dA = b_dA.to(k.dtype.element_ty)
++                b_A = tl.zeros([BT, BT], dtype=tl.float32)
++
++                for i_k in range(tl.cdiv(K, BK)):
++                    p_k = tl.make_block_ptr(k + (bos * H + i_h) * K, (T, K), (H * K, 1), (i_t * BT, i_k * BK), (BT, BK), (1, 0))
++                    p_dk = tl.make_block_ptr(dk + (bos * H + i_h) * K, (T, K), (H * K, 1), (i_t * BT, i_k * BK), (BT, BK), (1, 0))
++                    b_k = tl.load(p_k, boundary_check=(0, 1))
++                    b_dk = tl.load(p_dk, boundary_check=(0, 1))
++                    b_k_beta = (b_k * b_beta[:, None]).to(b_k.dtype)
++                    b_A += tl.dot(b_k_beta, tl.trans(b_k))
++                    b_dk_beta = tl.dot(b_dA, b_k)
++                    b_dbeta += tl.sum(b_dk_beta * b_k, 1)
++                    b_dk += tl.dot(tl.trans(b_dA), b_k_beta)
++                    b_dk += b_dk_beta * b_beta[:, None]
++                    tl.store(p_dk, b_dk.to(p_dk.dtype.element_ty), boundary_check=(0, 1))
++
++                b_dA_A = b_dA * b_A
++                b_dg += tl.sum(b_dA_A, axis=1) - tl.sum(b_dA_A, axis=0)
++                p_dg = tl.make_block_ptr(dg + offset, (T,), (1,), (i_t * BT,), (BT,), (0,))
++                p_dbeta = tl.make_block_ptr(dbeta + offset, (T,), (1,), (i_t * BT,), (BT,), (0,))
++                tl.store(p_dg, b_dg.to(p_dg.dtype.element_ty), boundary_check=(0,))
++                tl.store(p_dbeta, b_dbeta.to(p_dbeta.dtype.element_ty), boundary_check=(0,))
++
++
++@triton.heuristics({
++    'USE_G': lambda args: args['g'] is not None,
++    'USE_GK': lambda args: args['gk'] is not None,
++    'IS_VARLEN': lambda args: args['cu_seqlens'] is not None
++})
++@triton.jit(do_not_specialize=['T'])
++def recompute_w_u_fwd_kernel(
++        k,
++        v,
++        beta,
++        w,
++        u,
++        A,
++        g,
++        gk,
++        cu_seqlens,
++        chunk_indices,
++        T_tmp,
++        B,
++        H: tl.constexpr,
++        K: tl.constexpr,
++        V: tl.constexpr,
++        NT: tl.constexpr,
++        BT: tl.constexpr,
++        BK: tl.constexpr,
++        BV: tl.constexpr,
++        USE_G: tl.constexpr,
++        USE_GK: tl.constexpr,
++        IS_VARLEN: tl.constexpr
++):
++    core_id = tl.program_id(0)
++    total_cores = tl.num_programs(0)
++    T_max = T_tmp
++
++    base_chunks_per_pid = NT // total_cores
++    remainder_chunks = NT % total_cores
++
++    if core_id < remainder_chunks:
++        chunks_this_pid = base_chunks_per_pid + 1
++        start_idx = core_id * chunks_this_pid
++    else:
++        chunks_this_pid = base_chunks_per_pid
++        start_idx = core_id * chunks_this_pid + remainder_chunks
++
++    for idx in range(start_idx, start_idx + chunks_this_pid):
++        for i_b in range(B):
++            for i_h in range(0, H):
++
++                if IS_VARLEN:
++                    i_n, i_t = tl.load(chunk_indices + idx * 2).to(tl.int32), tl.load(chunk_indices + idx * 2 + 1).to(tl.int32)
++                    bos, eos = tl.load(cu_seqlens + i_n).to(tl.int32), tl.load(cu_seqlens + i_n + 1).to(tl.int32)
++                    offset = bos + i_h * T_max
++                    T = eos - bos
++                else:
++                    T = T_tmp
++                    i_t = idx
++                    bos, eos = i_b * T, i_b * T + T
++                    offset = bos * H + i_h * T_max
++
++                p_beta = tl.make_block_ptr(beta + offset, (T,), (1,), (i_t * BT,), (BT,), (0,))
++                b_beta = tl.load(p_beta, boundary_check=(0,))
++
++                p_A = tl.make_block_ptr(A + (bos * H + i_h) * BT, (T, BT), (H * BT, 1), (i_t * BT, 0), (BT, BT), (1, 0))
++                b_A = tl.load(p_A, boundary_check=(0, 1))
++
++                for i_v in range(tl.cdiv(V, BV)):
++                    p_v = tl.make_block_ptr(v + (bos * H + i_h) * V, (T, V), (H * V, 1), (i_t * BT, i_v * BV), (BT, BV), (1, 0))
++                    p_u = tl.make_block_ptr(u + (bos * H + i_h) * V, (T, V), (H * V, 1), (i_t * BT, i_v * BV), (BT, BV), (1, 0))
++                    b_v = tl.load(p_v, boundary_check=(0, 1))
++                    b_vb = (b_v * b_beta[:, None]).to(b_v.dtype)
++                    b_u = tl.dot(b_A, b_vb, allow_tf32=False)
++                    tl.store(p_u, b_u.to(p_u.dtype.element_ty), boundary_check=(0, 1))
++
++                if USE_G:
++                    p_g = tl.make_block_ptr(g + offset, (T,), (1,), (i_t * BT,), (BT,), (0,))
++                    b_g = tl.exp(tl.load(p_g, boundary_check=(0,)))
++
++                for i_k in range(tl.cdiv(K, BK)):
++                    p_k = tl.make_block_ptr(k + (bos * H + i_h) * K, (T, K), (H * K, 1), (i_t * BT, i_k * BK), (BT, BK), (1, 0))
++                    p_w = tl.make_block_ptr(w + (bos * H + i_h) * K, (T, K), (H * K, 1), (i_t * BT, i_k * BK), (BT, BK), (1, 0))
++                    b_k = tl.load(p_k, boundary_check=(0, 1))
++                    b_kb = b_k * b_beta[:, None]
++                    if USE_G:
++                        b_kb *= b_g[:, None]
++                    if USE_GK:
++                        p_gk = tl.make_block_ptr(gk + (bos * H + i_h) * K, (T, K), (H * K, 1), (i_t * BT, i_k * BK), (BT, BK), (1, 0))
++                        b_kb *= tl.exp(tl.load(p_gk, boundary_check=(0, 1)))
++                    b_w = tl.dot(b_A, b_kb.to(b_k.dtype))
++                    tl.store(p_w, b_w.to(p_w.dtype.element_ty), boundary_check=(0, 1))
++
++
++def recompute_w_u_fwd(
++        k: torch.Tensor,
++        v: torch.Tensor,
++        beta: torch.Tensor,
++        A: torch.Tensor,
++        g: Optional[torch.Tensor] = None,
++        gk: Optional[torch.Tensor] = None,
++        cu_seqlens: Optional[torch.LongTensor] = None,
++) -> Tuple[torch.Tensor, torch.Tensor]:
++    B, T, H, K, V = *k.shape, v.shape[-1]
++    BT = A.shape[-1]
++    BK = 128
++    BV = 128
++
++    chunk_indices = prepare_chunk_indices(cu_seqlens, BT) if cu_seqlens is not None else None
++    NT = triton.cdiv(T, BT) if cu_seqlens is None else len(chunk_indices)
++    g = g.transpose(1, 2).contiguous() if g is not None else None
++    beta = beta.transpose(1, 2).contiguous()
++
++    w = torch.empty_like(k)
++    u = torch.empty_like(v)
++    cv_kernel_num = 24
++    recompute_w_u_fwd_kernel[(cv_kernel_num,)](
++        k=k,
++        v=v,
++        beta=beta,
++        w=w,
++        u=u,
++        A=A,
++        g=g,
++        gk=gk,
++        cu_seqlens=cu_seqlens,
++        chunk_indices=chunk_indices,
++        T_tmp=T,
++        B=B,
++        H=H,
++        K=K,
++        V=V,
++        NT=NT,
++        BT=BT,
++        BK=BK,
++        BV=BV,
++    )
++    return w, u
++
++
++def prepare_wy_repr_bwd(
++        k: torch.Tensor,
++        v: torch.Tensor,
++        g: torch.Tensor,
++        beta: torch.Tensor,
++        A: torch.Tensor,
++        dw: torch.Tensor,
++        du: torch.Tensor,
++        cu_seqlens: Optional[torch.LongTensor],
++        chunk_size: int = 64,
++) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
++    B, T, H, K, V = *k.shape, v.shape[-1]
++    BT = chunk_size
++    chunk_indices = prepare_chunk_indices(cu_seqlens, BT) if cu_seqlens is not None else None
++    NT = triton.cdiv(T, BT) if cu_seqlens is None else len(chunk_indices)
++    BK = 128
++    BV = 128
++    beta = beta.transpose(1, 2).contiguous()
++    g = g.transpose(1, 2).contiguous()
++
++    dk = torch.empty_like(k)
++    dv = torch.empty_like(v)
++    dbeta = torch.empty_like(beta)
++    dg = torch.empty_like(g)
++
++    cv_kernel_num = 24
++    prepare_wy_repr_bwd_kernel[(cv_kernel_num,)](
++        k=k,
++        v=v,
++        beta=beta,
++        g=g,
++        A=A,
++        dw=dw,
++        du=du,
++        dk=dk,
++        dv=dv,
++        dbeta=dbeta,
++        dg=dg,
++        cu_seqlens=cu_seqlens,
++        chunk_indices=chunk_indices,
++        T=T,
++        B=B,
++        H=H,
++        K=K,
++        V=V,
++        NT=NT,
++        BT=BT,
++        BK=BK,
++        BV=BV,
++    )
++
++    dbeta = dbeta.transpose(1, 2).contiguous()
++    dg = dg.transpose(1, 2).contiguous()
++
++    return dk, dv, dbeta, dg
++
++
++bwd_prepare_wy_repr = prepare_wy_repr_bwd
++
++fwd_recompute_w_u = recompute_w_u_fwd
+diff --git a/megatron/core/transformer/attention.py b/megatron/core/transformer/attention.py
+index bc5e4e2ee..d223e774e 100644
+--- a/megatron/core/transformer/attention.py
++++ b/megatron/core/transformer/attention.py
+@@ -1219,7 +1219,7 @@ class Attention(MegatronModule, ABC):
+ 
+         return output, bias
+ 
+-    @jit_fuser
++    
+     def _apply_output_gate(self, x, gate):
+         x_dtype = x.dtype
+         gate = gate.contiguous()
+diff --git a/megatron/core/transformer/module.py b/megatron/core/transformer/module.py
+index c30c107e7..f4340f4d1 100644
+--- a/megatron/core/transformer/module.py
++++ b/megatron/core/transformer/module.py
+@@ -17,9 +17,9 @@ from megatron.core.transformer.utils import (
+     sharded_state_dict_default,
+ )
+ 
+-_FLOAT_TYPES = (torch.FloatTensor, torch.cuda.FloatTensor)
+-_HALF_TYPES = (torch.HalfTensor, torch.cuda.HalfTensor)
+-_BF16_TYPES = (torch.BFloat16Tensor, torch.cuda.BFloat16Tensor)
++_FLOAT_TYPES = (torch.FloatTensor, torch.cuda.FloatTensor, torch.npu.FloatTensor)
++_HALF_TYPES = (torch.HalfTensor, torch.cuda.HalfTensor, torch.npu.HalfTensor)
++_BF16_TYPES = (torch.BFloat16Tensor, torch.cuda.BFloat16Tensor, torch.npu.BFloat16Tensor)
+ 
+ 
+ def param_is_not_shared(param):  # pylint: disable=missing-function-docstring
+diff --git a/megatron/core/transformer/moe/experts.py b/megatron/core/transformer/moe/experts.py
+index d8e753422..aff929985 100644
+--- a/megatron/core/transformer/moe/experts.py
++++ b/megatron/core/transformer/moe/experts.py
+@@ -92,7 +92,7 @@ class GroupedMLP(MegatronModule):
+             if self.config.activation_func not in (F.silu, F.gelu):
+                 raise ValueError("Activation function must be silu or gelu when using GroupedMLP.")
+ 
+-            @jit_fuser
++            
+             def glu(x):
+                 x = torch.chunk(x, 2, dim=-1)
+                 return self.config.activation_func(x[0]) * x[1]
+@@ -109,7 +109,7 @@ class GroupedMLP(MegatronModule):
+                 "moe_act recompute for fp8 or fp4 cannot work with the legacy GroupedMLP."
+             )
+ 
+-        @jit_fuser
++        
+         def activation_func_with_probs(x, probs):
+             dtype = x.dtype
+             res = self.activation_func(x) * probs
+diff --git a/megatron/core/transformer/moe/token_dispatcher.py b/megatron/core/transformer/moe/token_dispatcher.py
+index 327dbc8a3..b007d6662 100644
+--- a/megatron/core/transformer/moe/token_dispatcher.py
++++ b/megatron/core/transformer/moe/token_dispatcher.py
+@@ -1402,7 +1402,7 @@ class MoEFlexTokenDispatcher(MoETokenDispatcher):
+         ).contiguous()
+         return routing_map, probs
+ 
+-    @jit_fuser
++    
+     def dispatch_preprocess(
+         self, hidden_states: torch.Tensor, routing_map: torch.Tensor, probs: torch.Tensor
+     ):
+diff --git a/megatron/core/transformer/multi_token_prediction.py b/megatron/core/transformer/multi_token_prediction.py
+index 63f81465d..c47baeaea 100755
+--- a/megatron/core/transformer/multi_token_prediction.py
++++ b/megatron/core/transformer/multi_token_prediction.py
+@@ -7,6 +7,7 @@ from typing import Callable, List, Optional, Union
+ 
+ import torch
+ from torch import Tensor
++import warnings
+ 
+ from megatron.core import InferenceParams, parallel_state, tensor_parallel
+ from megatron.core.dist_checkpointing.mapping import ShardedStateDict
+diff --git a/megatron/core/transformer/torch_norm.py b/megatron/core/transformer/torch_norm.py
+index d0ceca7af..f16796680 100644
+--- a/megatron/core/transformer/torch_norm.py
++++ b/megatron/core/transformer/torch_norm.py
+@@ -69,7 +69,7 @@ class L2Norm(torch.nn.Module):
+         self.hidden_size = hidden_size
+         self.eps = eps
+ 
+-    @jit_fuser
++    
+     def _norm(self, x):
+         """
+         Performs the actual L2 normalization.
+diff --git a/megatron/core/transformer/transformer_layer.py b/megatron/core/transformer/transformer_layer.py
+index 227e95862..da4540185 100644
+--- a/megatron/core/transformer/transformer_layer.py
++++ b/megatron/core/transformer/transformer_layer.py
+@@ -775,6 +775,16 @@ class TransformerLayer(GraphableMegatronModule, BaseTransformerLayer):
+                 self._set_fc2_residual(residual)
+             mlp_output_with_bias = self.mlp(pre_mlp_layernorm_output, padding_mask=padding_mask)
+ 
++        mlp_output, mlp_output_bias = mlp_output_with_bias
++        mlp_output = self.post_mlp_layernorm(mlp_output)
++        mlp_output_with_bias = (mlp_output, mlp_output_bias)
++
++        if self.recompute_pre_mlp_layernorm:
++            # discard the output of the pre-mlp layernorm and register the recompute
++            # as a gradient hook of mlp_output_with_bias[0]
++            self.pre_mlp_norm_checkpoint.discard_output_and_register_recompute(
++                mlp_output_with_bias[0]
++            )
+         nvtx_range_pop(suffix="mlp")
+ 
+         if (
+diff --git a/megatron/core/transformer/utils.py b/megatron/core/transformer/utils.py
+index 880c53099..dbc95736e 100644
+--- a/megatron/core/transformer/utils.py
++++ b/megatron/core/transformer/utils.py
+@@ -51,7 +51,7 @@ def attention_mask_func(attention_scores, attention_mask):
+     return attention_scores
+ 
+ 
+-@jit_fuser
++
+ def gelu_impl(x):
+     """OpenAI's gelu implementation."""
+     return 0.5 * x * (1.0 + torch.tanh(0.7978845608028654 * x * (1.0 + 0.044715 * x * x)))
+@@ -65,7 +65,7 @@ def openai_gelu(x):
+ # This is actually Python equivalent of torch.nn.functional.gelu(), also with
+ # type hints for ONNX exporter
+ # pylint: disable=missing-function-docstring
+-@jit_fuser
++
+ def erf_gelu(x):
+     return (
+         x * 0.5 * (torch.erf(x / 1.41421).to(dtype=x.dtype) + torch.ones_like(x).to(dtype=x.dtype))
+diff --git a/megatron/legacy/model/fused_bias_gelu.py b/megatron/legacy/model/fused_bias_gelu.py
+index e00e63148..ffe4b7ec6 100644
+--- a/megatron/legacy/model/fused_bias_gelu.py
++++ b/megatron/legacy/model/fused_bias_gelu.py
+@@ -12,7 +12,7 @@ from megatron.core.jit import jit_fuser
+ # actual gelu is:
+ # x * 0.5 * (1.0 + torch.erf(x * 0.70710678))
+ 
+-@jit_fuser
++
+ def bias_gelu(bias, y):
+     x = bias + y
+     return  x * 0.5 * (1.0 + torch.tanh(0.79788456 * x * (1 + 0.044715 * x * x)))
+@@ -20,7 +20,7 @@ def bias_gelu(bias, y):
+ # gradient of tanh approximation of gelu
+ # gradient of actual gelu is:
+ # 0.5 * (1. + torch.erf(x * 0.70710678)) + 0.3989423 * x * torch.exp(-0.5 * x * x)
+-@jit_fuser
++
+ def bias_gelu_back(g, bias, y):
+     x = bias + y
+     tanh_out = torch.tanh(0.79788456 * x * (1 + 0.044715 * x * x))
+diff --git a/megatron/legacy/model/transformer.py b/megatron/legacy/model/transformer.py
+index ca3414eec..5dd9e4798 100644
+--- a/megatron/legacy/model/transformer.py
++++ b/megatron/legacy/model/transformer.py
+@@ -856,7 +856,7 @@ def get_bias_dropout_add(training):
+     return _bias_dropout_add
+ 
+ 
+-@jit_fuser
++
+ def bias_dropout_add_fused_train(x: torch.Tensor,
+                                  bias: Optional[torch.Tensor],
+                                  residual: torch.Tensor,
+@@ -864,7 +864,7 @@ def bias_dropout_add_fused_train(x: torch.Tensor,
+     return bias_dropout_add(x, bias, residual, prob, True)
+ 
+ 
+-@jit_fuser
++
+ def bias_dropout_add_fused_inference(x: torch.Tensor,
+                                      bias: Optional[torch.Tensor],
+                                      residual: torch.Tensor,
+diff --git a/megatron/legacy/model/utils.py b/megatron/legacy/model/utils.py
+index 5762000d5..534858df7 100644
+--- a/megatron/legacy/model/utils.py
++++ b/megatron/legacy/model/utils.py
+@@ -43,7 +43,7 @@ def get_linear_layer(rows, columns, init_method):
+     return layer
+ 
+ 
+-@jit_fuser
++
+ def gelu_impl(x):
+     """OpenAI's gelu implementation."""
+     return 0.5 * x * (1.0 + torch.tanh(0.7978845608028654 * x *
+@@ -54,7 +54,7 @@ def openai_gelu(x):
+ 
+ 
+ #This is actually Python equivalent of torch.nn.functional.gelu(), also with type hints for ONNX exporter
+-@jit_fuser
++
+ def erf_gelu(x):
+     return x * 0.5 * (torch.erf(x / 1.41421).to(dtype=x.dtype)+torch.ones_like(x).to(dtype=x.dtype))
+ 
+diff --git a/megatron/training/utils.py b/megatron/training/utils.py
+index 7709f6513..65b8f7fca 100644
+--- a/megatron/training/utils.py
++++ b/megatron/training/utils.py
+@@ -446,6 +446,8 @@ def is_first_or_last_pipeline_stage(vp_stage):
+ 
+ def get_device_arch_version():
+     """Returns GPU arch version (8: Ampere, 9: Hopper, 10: Blackwell, ...)"""
++    if hasattr(torch, 'npu') and torch.npu.is_available():
++        return 10  # NPU: treat as Blackwell to avoid CUDA restrictions
+     return torch.cuda.get_device_properties(torch.device("cuda:0")).major
+ 
+ 
