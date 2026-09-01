@@ -952,15 +952,47 @@ index 000000000..dc388fd7f
 +    )
 +    return o, final_state
 diff --git a/megatron/core/ssm/gated_delta_net.py b/megatron/core/ssm/gated_delta_net.py
-index 601a72a43..ec114cf38 100644
+index 601a72a43..8998e70f9 100644
 --- a/megatron/core/ssm/gated_delta_net.py
 +++ b/megatron/core/ssm/gated_delta_net.py
-@@ -465,7 +465,7 @@ class GatedDeltaNet(MegatronModule):
- 
+@@ -40,9 +40,9 @@ from megatron.core.transformer.utils import (
+ from megatron.core.utils import deprecate_inference_params, nvtx_range_pop, nvtx_range_push
+
+ try:
+-    from fla.modules.convolution import causal_conv1d
+-    from fla.modules.l2norm import l2norm
+-    from fla.ops.gated_delta_rule import chunk_gated_delta_rule
++    from megatron.core.ssm.triton.causal_conv1d import causal_conv1d
++    from megatron.core.ssm.triton.l2norm import l2norm
++    from megatron.core.ssm.chunk_gated_delta_rule import chunk_gated_delta_rule
+
+     HAVE_FLA = True
+ except ImportError:
+@@ -377,14 +377,13 @@ class GatedDeltaNet(MegatronModule):
+             qkv = self.act_fn(conv_out[..., :seq_len])
+             qkv = qkv.transpose(1, 2)  # b, d, s -> b, s, d
+         else:
+-            assert self.activation in ["silu", "swish"]
++            conv1d_weight = conv1d_weight.squeeze(1)
+             qkv, _ = causal_conv1d(
+-                x=qkv,  # FLA conv1d accepts [b, s, d] format input
+-                weight=conv1d_weight.squeeze(1),  # d, 1, w -> d, w
++                x=qkv,
++                weight=conv1d_weight.transpose(-1, -2).contiguous(),
+                 bias=conv1d_bias,
+-                activation=self.activation,
+-                initial_state=None,
+-                output_final_state=False,
++                activation='silu',
++                cu_seqlens=None
+             )
+         nvtx_range_pop(suffix="conv1d")
+
+@@ -465,7 +464,6 @@ class GatedDeltaNet(MegatronModule):
+
          return out, out_bias
- 
+
 -    @jit_fuser
-+    
      def _apply_gated_norm(self, x, gate):
          # Output Norm
          x_dtype = x.dtype
