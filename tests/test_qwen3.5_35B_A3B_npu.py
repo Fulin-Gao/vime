@@ -16,7 +16,7 @@ def prepare():
     dataset_dir = shlex.quote(DATASET_DIR)
 
     U.exec_command(f"mkdir -p {models_dir} {datasets_dir}")
-    U.exec_command(f"export HF_HUB_DOWNLOAD_TIMEOUT=120 && hf download Qwen/Qwen3.5-35B-A3B --local-dir {model_dir}")
+    U.exec_command(f"hf download Qwen/Qwen3.5-35B-A3B --local-dir {model_dir}")
     U.exec_command("hf download --repo-type dataset zhuzilin/dapo-math-17k " f"--local-dir {dataset_dir}")
 
 
