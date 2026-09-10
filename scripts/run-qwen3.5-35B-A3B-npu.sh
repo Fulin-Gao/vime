@@ -134,10 +134,9 @@ OPTIMIZER_ARGS=(
 
 VLLM_ARGS=(
    --rollout-num-gpus-per-engine 2
-   --vllm-gpu-memory-utilization 0.7
+   --vllm-gpu-memory-utilization 0.85
    --vllm-enable-sleep-mode
    --vllm-weight-sync-mode native
-   --vllm-enforce-eager
 )
 
 MISC_ARGS=(
