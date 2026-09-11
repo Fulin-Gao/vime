@@ -44,7 +44,7 @@ def execute():
         "--num-rollout 2 "
         "--rollout-batch-size 4 "
         "--n-samples-per-prompt 4 "
-        "--rollout-max-response-len 2048 "
+        "--rollout-max-response-len 1024 "
         "--rollout-temperature 1 "
         "--global-batch-size 16 "
         "--balance-data "
